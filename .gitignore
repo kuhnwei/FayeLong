@@ -1,4 +1,4 @@
-# 运行时数据（数据库 / 媒体库 / 模型 / 词典 / 日志）
+# 运行时数据（数据库 / 媒体库 / 模型 / 词典 / 日志 / 备份）
 # 注意：data/media/audio 是「收件箱」，用户投放原始素材，保留目录占位
 data/app.db
 data/media/library/
@@ -7,6 +7,10 @@ data/media/audio/*
 data/models/
 data/dict/
 data/logs/
+# 就地更新前的 app.db 备份（v1.11）
+data/backups/
+# 安装版本记录（v1.11，运行时生成）
+data/install.json
 
 # 便携版 ffmpeg / ffprobe 二进制（体积大，由 packaging 脚本下载）
 tools/ffmpeg/*.exe
@@ -15,14 +19,26 @@ tools/ffmpeg/*.exe
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 .env
+.env.local
+# 临时 GitHub 凭据（用完即删，绝不入库）
+.git-token.local
 
 # Node
 node_modules/
 dist/
 .vite/
+
+# 日志
+*.log
+
+# 打包产物与中间文件（交付包 1.7GB，不入库）
+packaging/tmp/
+*.zip
+*.zip.sha256.txt
 
 # 编辑器
 .idea/
