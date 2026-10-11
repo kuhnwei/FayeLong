@@ -1,0 +1,30 @@
+# 运行时数据（数据库 / 媒体库 / 模型 / 词典 / 日志）
+# 注意：data/media/audio 是「收件箱」，用户投放原始素材，保留目录占位
+data/app.db
+data/media/library/
+data/media/audio/*
+!data/media/audio/.gitkeep
+data/models/
+data/dict/
+data/logs/
+
+# 便携版 ffmpeg / ffprobe 二进制（体积大，由 packaging 脚本下载）
+tools/ffmpeg/*.exe
+!tools/ffmpeg/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# 编辑器
+.idea/
+.vscode/
+.DS_Store

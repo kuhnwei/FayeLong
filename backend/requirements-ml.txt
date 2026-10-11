@@ -1,0 +1,13 @@
+# 语音识别依赖（M2）
+# 说明：翻译已改为「免费在线引擎」（见 app/services/translate.py），
+#       因此**不再需要 torch / transformers**，包体积大幅下降。
+#       faster-whisper 会自带 ctranslate2 / tokenizers / onnxruntime / av。
+
+faster-whisper>=1.0.3
+ctranslate2>=4.4.0
+huggingface-hub>=0.23.0
+onnxruntime>=1.17.0     # Silero VAD（faster-whisper 静音切分）
+numpy>=1.26.0
+
+# 词典查询（M4 使用）：ECDICT 词库 + 词形还原
+lemminflect>=0.2.3
