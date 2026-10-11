@@ -8,7 +8,8 @@
 > 2. **词库完全离线**：ECDICT `stardict.db`（**340 万词条**，811.9 MB）落地 `data/dict/ecdict.db`，查询走 SQLite 只读连接 + 索引；不产生任何在线依赖。词库未收录时可用免费在线引擎兜底给出「参考释义」（可配置关闭）。
 > 3. **词形还原两级策略**：① ECDICT `exchange` 字段 `0:` 原型反查（最准）；② lemminflect 生成候选原型 + 规则兜底，候选**必须能在词库查到**才采用，避免误还原。
 > 4. **学习闭环打通**：原文按词可点击 → 浮层展示音标/释义/词形变化/考纲标签 → 加入生词本时自动带上**上下文句子与来源媒体**；生词本支持搜索、按掌握度筛选、编辑释义、导出 Markdown。
-> 5. 新增 §19 M4 实现说明与验证记录。
+> 5. 新增 `scripts/verify_m4.mjs`（无头 Chrome + CDP 驱动）做**真实浏览器交互验证**，查词 → 加生词本 → 生词本页 → 笔记全链路 **12/12 通过**；新增 §19 M4 实现说明与验证记录。
+> 6. 踩坑修正：ECDICT 含「音节拆分条目」（`hel-lo` / `chil-dren`），只按 `sw` 查询会命中错误条目；已改为「精确词形 → 排除连字符 → 兜底」三级查询。
 >
 > **v1.5 关键变更**
 > 1. **M3（单句听写页）已完成并验证**：听写输入 → 提交 → **词级标红校验**（correct / wrong / missing / extra 四类）→ 正确率与掌握度 → 听写历史。
@@ -197,7 +198,7 @@
 | 语音识别 | faster-whisper `small`（int8，CTranslate2 加速） | 免费、离线、8GB 内存可跑 |
 | 翻译 | **在线多引擎**：有道公开接口 → MyMemory | 免密钥、免注册、开箱即用；质量由有道保障 |
 | HTTP 客户端 | Python 标准库 `urllib` | 零额外依赖，减小打包体积 |
-| 词典 | ECDICT（~77 万词条）+ lemminflect 词形还原 | 免费、离线 |
+| 词典 | **ECDICT 全量词库**（实测 **340 万词条**，811.9 MB）+ 词形还原（exchange 反查 + lemminflect） | 免费、离线 |
 | 后台任务 | FastAPI BackgroundTasks + 线程池 | 识别/翻译耗时长，避免阻塞请求 |
 | 静态托管 | FastAPI StaticFiles | 单端口部署，无需 Node 运行时 |
 
@@ -851,6 +852,10 @@ FayeLong/                          # 解压即得，整体可拷贝
 - 重写：`src/pages/VocabPage.tsx`
 - 修改：`src/pages/StudyPage.tsx`（`ClickableText` 按词拆分 + 接入 `NoteEditor` / `WordPopover`）、
   `src/api/client.ts`（词典 / 生词本 / 笔记类型与调用）、`src/components/icons.tsx`（新增 9 个图标）
+
+**验证脚本**
+
+- 新增：`scripts/verify_m4.mjs`（无头 Chrome + CDP 驱动，覆盖查词 / 生词本 / 笔记全链路）
 
 ### 19.6 验证记录
 
