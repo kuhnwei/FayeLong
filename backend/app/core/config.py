@@ -7,10 +7,17 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# backend/ 目录
+# 代码包所在目录：
+#   开发环境  <项目>/backend/app/core/config.py → parents[2] = <项目>/backend
+#   打包环境  <解压目录>/app/core/config.py      → parents[2] = <解压目录>
 BASE_DIR = Path(__file__).resolve().parents[2]
-# 项目根目录（打包后为解压目录）
-ROOT_DIR = BASE_DIR.parent
+# 项目根目录（开发环境取 backend/ 的上一级；打包环境解压目录本身就是根）
+_DEV_MARKERS = ("requirements.txt", "requirements-ml.txt")
+ROOT_DIR = (
+    BASE_DIR.parent
+    if any((BASE_DIR / name).is_file() for name in _DEV_MARKERS)
+    else BASE_DIR
+)
 
 # ---------------- 运行时数据根（唯一，拷贝即迁移）----------------
 DATA_DIR = ROOT_DIR / "data"

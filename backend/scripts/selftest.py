@@ -136,6 +136,35 @@ def check_dictation(ok: bool) -> bool:
     return ok
 
 
+def check_routes(ok: bool) -> bool:
+    """接口完整性自检（M5）：确认关键路由都在，避免重构时误删。"""
+    print("\n【接口完整性】")
+    from app.main import app  # noqa: PLC0415  （延迟导入，避免拖慢其它检查）
+
+    paths = app.openapi().get("paths", {})
+    expected = [
+        "/api/media",
+        "/api/media/{media_id}/stream",
+        "/api/media/{media_id}/progress",
+        "/api/media/{media_id}/notes",
+        "/api/media/{media_id}/notes/export",
+        "/api/sentences/{sentence_id}",
+        "/api/attempts",
+        "/api/dict/{word}",
+        "/api/vocab",
+        "/api/vocab/export",
+        "/api/notes/{sentence_id}",
+        "/api/stats",
+    ]
+    missing = [p for p in expected if p not in paths]
+    print(f"  路由总数 {len(paths)}，关键路由 {len(expected) - len(missing)}/{len(expected)}")
+    for path in missing:
+        print(f"  缺失 {path}")
+    if missing:
+        ok = False
+    return ok
+
+
 def main() -> int:
     deep = "--asr" in sys.argv
 
@@ -156,6 +185,7 @@ def main() -> int:
     ok = check_translate(ok)
     ok = check_dict(ok)
     ok = check_dictation(ok)
+    ok = check_routes(ok)
 
     print("\n" + SEP)
     print("结论：" + ("全部通过 ✔" if ok else "存在未通过项 ✘"))

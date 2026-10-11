@@ -12,7 +12,9 @@ import asyncio
 import json
 import logging
 import shutil
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
@@ -23,7 +25,7 @@ from app.core.config import INBOX_DIR, STATUS_PENDING, SUPPORTED_EXT
 from app.core.files import file_response, guess_mime
 from app.core.paths import clips_dir
 from app.db import SessionLocal, get_db
-from app.models import Media, Sentence
+from app.models import Media, Note, Sentence
 from app.schemas.dictation import DictationSummary
 from app.schemas.media import (
     ImportRequest,
@@ -36,6 +38,7 @@ from app.schemas.media import (
     ProgressEvent,
     SentenceOut,
 )
+from app.schemas.note import MediaNoteItem, MediaNotesResponse
 from app.services import media as media_service
 from app.services import study as study_service
 from app.services.study import SentenceStat
@@ -450,6 +453,121 @@ def clear_clips(media_id: int, db: Session = Depends(get_db)) -> dict:
     db.commit()
     logger.info("已清理媒体 %s 的音频切片", media_id)
     return {"media_id": media.id, "cleared": True, "clips_dir": str(clips_dir(media_id))}
+
+
+# --------------------------- 笔记汇总（M5 / FR-A6）---------------------------
+
+
+def _notes_of(db: Session, media_id: int) -> list[tuple[Note, Sentence]]:
+    """该媒体下所有「已有笔记」的句子（按句序）。"""
+    return (
+        db.query(Note, Sentence)
+        .join(Sentence, Sentence.id == Note.sentence_id)
+        .filter(Sentence.media_id == media_id)
+        .order_by(Sentence.idx)
+        .all()
+    )
+
+
+@router.get("/{media_id}/notes", response_model=MediaNotesResponse)
+def list_media_notes(media_id: int, db: Session = Depends(get_db)) -> MediaNotesResponse:
+    """某个媒体的句子笔记汇总（供学习页「笔记」面板）。"""
+    media = _get_or_404(db, media_id)
+    rows = _notes_of(db, media_id)
+    stats = study_service.media_stats(db, media_id)
+    sentence_count = (
+        db.query(func.count(Sentence.id)).filter(Sentence.media_id == media_id).scalar() or 0
+    )
+
+    items: list[MediaNoteItem] = []
+    for note, sentence in rows:
+        stat = stats.get(sentence.id)
+        items.append(
+            MediaNoteItem(
+                sentence_id=sentence.id,
+                idx=sentence.idx,
+                text_en=sentence.text_en,
+                text_zh=sentence.text_zh,
+                content=note.content,
+                updated_at=note.updated_at,
+                attempt_count=stat.attempt_count if stat else 0,
+                best_accuracy=stat.best_accuracy if stat else 0.0,
+                mastered=stat.mastered if stat else False,
+            )
+        )
+
+    return MediaNotesResponse(
+        media_id=media.id,
+        title=media.title,
+        total=len(items),
+        sentence_count=sentence_count,
+        items=items,
+    )
+
+
+def _notes_markdown(
+    media: Media,
+    rows: list[tuple[Note, Sentence]],
+    stats: dict[int, SentenceStat],
+    sentence_count: int,
+) -> str:
+    """把某媒体的笔记汇总成 Markdown（原文 / 翻译 / 听写概要 / 笔记）。"""
+
+    def clean(text: str | None) -> str:
+        return (text or "").replace("\r", "").strip()
+
+    lines = [
+        f"# {media.title} · 句子笔记",
+        "",
+        f"> 导出时间：{datetime.now():%Y-%m-%d %H:%M}　｜　"
+        f"共 {len(rows)} 条笔记 / 全篇 {sentence_count} 句",
+        "",
+    ]
+
+    if not rows:
+        lines.append("_（该媒体还没有任何句子笔记）_")
+        return "\n".join(lines) + "\n"
+
+    for note, sentence in rows:
+        stat = stats.get(sentence.id)
+        lines.append(f"## #{sentence.idx + 1}")
+        lines.append("")
+        lines.append(clean(sentence.text_en) or "_（无原文）_")
+        lines.append("")
+        if clean(sentence.text_zh):
+            lines.append(f"- 翻译：{clean(sentence.text_zh)}")
+        if stat and stat.attempt_count:
+            tag = "已掌握" if stat.mastered else "未掌握"
+            lines.append(
+                f"- 听写：最佳 {stat.best_accuracy:g}%　｜　练过 {stat.attempt_count} 次　｜　{tag}"
+            )
+        lines.append(f"- 笔记：{clean(note.content) or '_（空）_'}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+@router.get("/{media_id}/notes/export")
+def export_media_notes(media_id: int, db: Session = Depends(get_db)) -> Response:
+    """导出某个媒体的句子笔记为 Markdown 文件（浏览器下载）。"""
+    media = _get_or_404(db, media_id)
+    rows = _notes_of(db, media_id)
+    stats = study_service.media_stats(db, media_id)
+    sentence_count = (
+        db.query(func.count(Sentence.id)).filter(Sentence.media_id == media_id).scalar() or 0
+    )
+    body = _notes_markdown(media, rows, stats, sentence_count)
+
+    safe_title = "".join(ch for ch in media.title if ch not in '\\/:*?"<>|').strip() or "未命名"
+    filename = f"{safe_title}-笔记-{datetime.now():%Y%m%d-%H%M}.md"
+    logger.info("导出媒体 %s 的 %d 条笔记为 Markdown", media_id, len(rows))
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 # --------------------------- 播放 ---------------------------
