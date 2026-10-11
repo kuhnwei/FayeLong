@@ -6,6 +6,7 @@ import {
   PROCESSING_STATUSES,
   deleteMedia,
   getHealth,
+  getStats,
   importFromInbox,
   listInbox,
   listMedia,
@@ -25,6 +26,8 @@ import {
   PencilIcon,
   PlayIcon,
   RefreshIcon,
+  SearchIcon,
+  SortIcon,
   TrashIcon,
   UploadIcon,
 } from '../components/icons'
@@ -103,6 +106,37 @@ function StatusLine({ media }: { media: MediaItem }) {
         已就绪，可播放
         {media.sentence_count > 0 && `（${media.sentence_count} 句已转录）`}
       </span>
+    </div>
+  )
+}
+
+// --------------------------- 概览卡片（M5） ---------------------------
+
+function StatCard({ label, value, sub }: { label: string; value: number; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <p className="text-[11px] text-slate-400">{label}</p>
+      <p className="mt-0.5 text-[20px] font-medium tabular-nums leading-tight text-slate-900">
+        {value}
+      </p>
+      {sub && <p className="mt-0.5 text-[11px] text-slate-400">{sub}</p>}
+    </div>
+  )
+}
+
+/** 列表加载骨架屏（M5：替代干巴巴的「加载中…」） */
+function ListSkeleton() {
+  return (
+    <div className="space-y-3 px-5 py-5">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex animate-pulse items-center gap-4">
+          <div className="h-9 w-9 shrink-0 rounded-full bg-slate-100" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3.5 w-1/3 rounded bg-slate-100" />
+            <div className="h-3 w-2/3 rounded bg-slate-100" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -248,8 +282,15 @@ export default function MediaLibraryPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [inboxOpen, setInboxOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
+  const [keyword, setKeyword] = useState('')
+  const [sort, setSort] = useState<'recent' | 'title' | 'duration'>('recent')
 
   const healthQuery = useQuery({ queryKey: ['health'], queryFn: getHealth })
+  const statsQuery = useQuery({
+    queryKey: ['stats'],
+    queryFn: getStats,
+    refetchInterval: 15000,
+  })
 
   const mediaQuery = useQuery({
     queryKey: ['media'],
@@ -308,6 +349,24 @@ export default function MediaLibraryPage() {
     () => items.filter((m) => PROCESSING_STATUSES.includes(m.status)).length,
     [items],
   )
+
+  // 搜索 + 排序（M5 打磨：素材变多后仍能快速找到）
+  const visible = useMemo(() => {
+    const kw = keyword.trim().toLowerCase()
+    const filtered = kw
+      ? items.filter(
+          (m) =>
+            m.title.toLowerCase().includes(kw) ||
+            m.original_name.toLowerCase().includes(kw),
+        )
+      : items
+    const sorted = [...filtered]
+    if (sort === 'title') sorted.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+    else if (sort === 'duration') sorted.sort((a, b) => b.duration_ms - a.duration_ms)
+    return sorted
+  }, [items, keyword, sort])
+
+  const stats = statsQuery.data
 
   async function handleFiles(files: FileList | File[]) {
     const list = Array.from(files)
@@ -396,6 +455,32 @@ export default function MediaLibraryPage() {
           />
         </div>
       </div>
+
+      {/* 学习概览（M5） */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard
+            label="素材"
+            value={stats.media.total}
+            sub={`${stats.media.done} 个已就绪`}
+          />
+          <StatCard
+            label="句子"
+            value={stats.sentences}
+            sub={`已听写 ${stats.attempts.attempted_sentences} 句`}
+          />
+          <StatCard
+            label="生词"
+            value={stats.vocab.total}
+            sub={`已掌握 ${stats.vocab.mastered} 个`}
+          />
+          <StatCard
+            label="句子笔记"
+            value={stats.notes}
+            sub={`听写提交 ${stats.attempts.total} 次`}
+          />
+        </div>
+      )}
 
       {/* 拖拽上传区 */}
       <div
@@ -574,7 +659,7 @@ export default function MediaLibraryPage() {
 
       {/* 列表 */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
           <h3 className="text-sm font-medium text-slate-900">
             已导入素材
             <span className="ml-2 text-[12px] font-normal text-slate-400">
@@ -586,11 +671,34 @@ export default function MediaLibraryPage() {
               {processingCount} 个正在处理…
             </span>
           )}
+
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="搜索标题 / 文件名…"
+                className="w-[180px] rounded-lg border border-slate-200 py-1.5 pl-8 pr-3 text-[12px] text-slate-700 outline-none transition-colors focus:border-slate-400"
+              />
+            </div>
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5">
+              <SortIcon className="h-3.5 w-3.5 text-slate-400" />
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as typeof sort)}
+                title="排序方式"
+                className="bg-transparent text-[12px] text-slate-600 outline-none"
+              >
+                <option value="recent">最近导入</option>
+                <option value="title">按标题</option>
+                <option value="duration">按时长</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        {mediaQuery.isLoading && (
-          <p className="px-5 py-8 text-center text-[13px] text-slate-400">加载中…</p>
-        )}
+        {mediaQuery.isLoading && <ListSkeleton />}
         {mediaQuery.isError && (
           <p className="px-5 py-8 text-center text-[13px] text-red-600">
             读取失败：{(mediaQuery.error as Error).message}
@@ -603,8 +711,13 @@ export default function MediaLibraryPage() {
             </p>
           </div>
         )}
+        {!mediaQuery.isLoading && items.length > 0 && visible.length === 0 && (
+          <p className="px-5 py-12 text-center text-[13px] text-slate-400">
+            没有匹配「{keyword}」的素材。
+          </p>
+        )}
 
-        {items.map((media) => (
+        {visible.map((media) => (
           <div key={media.id} className="border-b border-slate-50 last:border-0">
             <MediaRow
               media={media}
@@ -671,6 +784,19 @@ export default function MediaLibraryPage() {
                 healthQuery.data.checks.asr &&
                 !healthQuery.data.checks.asr_model &&
                 '（模型未就绪，处理时自动下载）'}
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className={healthQuery.data?.checks.dict ? 'text-green-600' : 'text-amber-500'}>
+              {healthQuery.data?.checks.dict ? '✓' : '!'}
+            </span>
+            <span className="text-slate-600">
+              离线词典 ECDICT
+              {healthQuery.data?.dict.entries
+                ? `（${healthQuery.data.dict.entries.toLocaleString('en-US')} 词条）`
+                : healthQuery.data && !healthQuery.data.checks.dict
+                  ? '（未安装，查词将无法给出站内释义）'
+                  : ''}
             </span>
           </li>
           <li className="flex items-start gap-2">

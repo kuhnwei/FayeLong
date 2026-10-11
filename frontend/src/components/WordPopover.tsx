@@ -10,6 +10,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation } from '@tanstack/react-query'
 import { addVocab, lookupWord, type DictResult, type VocabItem } from '../api/client'
+import { speakEnglish } from '../utils/speech'
 import {
   BookmarkPlusIcon,
   CheckIcon,
@@ -33,20 +34,6 @@ interface Props {
 
 const CARD_W = 344
 const MARGIN = 8
-
-function speak(word: string) {
-  try {
-    const synth = window.speechSynthesis
-    if (!synth) return
-    synth.cancel()
-    const utter = new SpeechSynthesisUtterance(word)
-    utter.lang = 'en-US'
-    utter.rate = 0.9
-    synth.speak(utter)
-  } catch {
-    /* 系统不支持朗读时静默忽略 */
-  }
-}
 
 export default function WordPopover({ target, onClose }: Props) {
   const cardRef = useRef<HTMLDivElement>(null)
@@ -132,7 +119,7 @@ export default function WordPopover({ target, onClose }: Props) {
               )}
               <button
                 type="button"
-                onClick={() => speak(data?.word || target.word)}
+                onClick={() => speakEnglish(data?.word || target.word)}
                 title="朗读"
                 className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-slate-50"
               >

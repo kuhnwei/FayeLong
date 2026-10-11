@@ -331,3 +331,90 @@ export function SparkIcon({ className = size }: IconProps) {
     </svg>
   )
 }
+
+// --------------------------- M5：打磨 ---------------------------
+
+/** A-B 循环（两个区间标记 + 回环箭头） */
+export function ABLoopIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6 6v12M18 6v12" />
+      <path d="M6 12h12" />
+      <path d="M8.5 9 6 6 3.5 9" />
+      <path d="M15.5 15 18 18l2.5-3" />
+    </svg>
+  )
+}
+
+/** 列表 / 汇总 */
+export function ListIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M8 6h12M8 12h12M8 18h12" />
+      <path d="M4 6h.01M4 12h.01M4 18h.01" />
+    </svg>
+  )
+}
+
+/** 排序（上下箭头） */
+export function SortIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M7 4v16M7 20l-3-3M7 4l3 3" />
+      <path d="M17 20V4M17 4l3 3M17 20l-3-3" />
+    </svg>
+  )
+}
+
+// --------------------------- 生词本增强：朗读与练习 ---------------------------
+
+/** 朗读（喇叭 + 声波） */
+export function SpeakerIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M4 9.5h3L11 6v12l-4-3.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z" />
+      <path d="M15 9.5a3.5 3.5 0 0 1 0 5" />
+      <path d="M17.8 6.8a7.5 7.5 0 0 1 0 10.4" />
+    </svg>
+  )
+}
+
+/** 打乱顺序（交叉箭头） */
+export function ShuffleIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M3 7h3.5l3 3M21 7h-4.5l-8 10H3" />
+      <path d="M17 4l4 3-4 3" />
+      <path d="M17 14l4 3-4 3" />
+    </svg>
+  )
+}
+
+/** 提示 / 看答案（灯泡） */
+export function LightbulbIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M9 18h6" />
+      <path d="M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3V16h5.8v-.8c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z" />
+    </svg>
+  )
+}
+
+/** 练习完成（奖杯） */
+export function TrophyIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M7 4h10v5a5 5 0 0 1-10 0Z" />
+      <path d="M7 5H5a2 2 0 0 0 2 4M17 5h2a2 2 0 0 1-2 4" />
+      <path d="M12 14v3M9 20h6M10 17h4" />
+    </svg>
+  )
+}

@@ -12,6 +12,7 @@ import {
   STATUS_LABEL,
   clearClips,
   getMedia,
+  getMediaNotes,
   listAttempts,
   mergeSentence,
   openProgressStream,
@@ -27,11 +28,13 @@ import {
 } from '../api/client'
 import DiffResult from '../components/DiffResult'
 import NoteEditor from '../components/NoteEditor'
+import NotesPanel from '../components/NotesPanel'
 import WordPopover, { type WordPopoverTarget } from '../components/WordPopover'
 import { useClipPlayer } from '../hooks/useClipPlayer'
 import { usePlayer } from '../store/player'
 import { formatBytes, formatDuration, formatRelative, formatSeconds } from '../utils/format'
 import {
+  ABLoopIcon,
   AlertIcon,
   CheckIcon,
   EyeIcon,
@@ -39,6 +42,7 @@ import {
   HistoryIcon,
   LoopIcon,
   MergeIcon,
+  NoteIcon,
   PauseIcon,
   PencilIcon,
   PlayIcon,
@@ -83,6 +87,8 @@ export default function StudyPage() {
   const [autoReveal, setAutoReveal] = useState(true)
   const [stats, setStats] = useState<Record<number, StatOverride>>({})
   const [wordTarget, setWordTarget] = useState<WordPopoverTarget | null>(null)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [highlightId, setHighlightId] = useState<number | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['media', id],
@@ -92,6 +98,14 @@ export default function StudyPage() {
     refetchInterval: (query) =>
       query.state.data && PROCESSING_STATUSES.includes(query.state.data.status) ? 2500 : false,
   })
+
+  // 笔记汇总（用于顶部入口的计数与面板）
+  const notesQuery = useQuery({
+    queryKey: ['media-notes', id],
+    queryFn: () => getMediaNotes(id),
+    enabled: Number.isFinite(id),
+  })
+  const noteCount = notesQuery.data?.total ?? 0
 
   const status = live?.status ?? data?.status ?? ''
   const progress = live?.progress ?? data?.progress ?? 0
@@ -223,6 +237,18 @@ export default function StudyPage() {
     else setRevealZh(map)
   }
 
+  /** 从笔记面板跳到某句：展开原文 + 滚动定位 + 短暂高亮 */
+  const jumpToSentence = (sid: number) => {
+    setRevealEn((prev) => ({ ...prev, [sid]: true }))
+    setHighlightId(sid)
+    window.setTimeout(() => {
+      document
+        .getElementById(`sentence-${sid}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+    window.setTimeout(() => setHighlightId((cur) => (cur === sid ? null : cur)), 2400)
+  }
+
   return (
     <div className="space-y-5">
       {/* 隐藏的句子音频元素 */}
@@ -235,6 +261,11 @@ export default function StudyPage() {
           target={wordTarget}
           onClose={() => setWordTarget(null)}
         />
+      )}
+
+      {/* 笔记汇总面板（M5：FR-A6） */}
+      {notesOpen && (
+        <NotesPanel mediaId={id} onClose={() => setNotesOpen(false)} onJump={jumpToSentence} />
       )}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -330,6 +361,17 @@ export default function StudyPage() {
                   <RefreshIcon className="h-3.5 w-3.5" />
                   重新识别
                 </button>
+                {sentences.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setNotesOpen(true)}
+                    title="查看本媒体全部句子笔记"
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+                  >
+                    <NoteIcon className="h-3.5 w-3.5" />
+                    笔记{noteCount > 0 ? `（${noteCount}）` : ''}
+                  </button>
+                )}
                 {clipsReady && (
                   <button
                     type="button"
@@ -457,6 +499,7 @@ export default function StudyPage() {
                 key={sentence.id}
                 sentence={sentence}
                 clip={clip}
+                highlight={highlightId === sentence.id}
                 revealEn={revealEn}
                 revealZh={revealZh}
                 setRevealEn={setRevealEn}
@@ -501,6 +544,7 @@ export default function StudyPage() {
 interface SentenceCardProps {
   sentence: SentenceItem
   clip: ReturnType<typeof useClipPlayer>
+  highlight: boolean
   revealEn: Record<number, boolean>
   revealZh: Record<number, boolean>
   setRevealEn: React.Dispatch<React.SetStateAction<Record<number, boolean>>>
@@ -521,6 +565,7 @@ interface SentenceCardProps {
 function SentenceCard({
   sentence,
   clip,
+  highlight,
   revealEn,
   revealZh,
   setRevealEn,
@@ -555,11 +600,38 @@ function SentenceCard({
   const playheadMs = Math.round(sentence.start_ms - CLIP_PAD_MS + clip.currentTime * 1000)
   const spanMs = sentence.end_ms - sentence.start_ms
 
+  // A-B 循环：A 未设 → 设 A；A 已设 B 未设 → 设 B；都已设 → 清除
+  const abActive = isActive && clip.abStart !== null && clip.abEnd !== null
+  const cycleAB = () => {
+    if (!sentence.clip_url) return
+    if (clip.abStart === null) {
+      if (isActive) {
+        clip.setAB(sentence.id, Math.max(0, clip.currentTime), null)
+      } else {
+        clip.play(sentence.id, sentence.clip_url)
+        clip.setAB(sentence.id, 0, null)
+      }
+      return
+    }
+    if (clip.abEnd === null) {
+      const t = clip.currentTime
+      if (t > clip.abStart + 0.2) clip.setAB(sentence.id, clip.abStart, t)
+      else clip.setAB(sentence.id, t, null) // 与 A 太近，视为重设 A
+      return
+    }
+    clip.clearAB()
+  }
+
   return (
     <div
+      id={`sentence-${sentence.id}`}
       className={[
         'rounded-xl border bg-white p-4 transition-colors',
-        isActive ? 'border-slate-900' : 'border-slate-200',
+        highlight
+          ? 'border-amber-400 ring-2 ring-amber-200'
+          : isActive
+            ? 'border-slate-900'
+            : 'border-slate-200',
       ].join(' ')}
     >
       {/* 工具栏 */}
@@ -604,6 +676,38 @@ function SentenceCard({
         >
           <LoopIcon className="h-3.5 w-3.5" />
           循环
+        </button>
+
+        {/* A-B 循环（FR-A1）：点一下设 A、再点设 B、再点清除 */}
+        <button
+          type="button"
+          disabled={!sentence.clip_url}
+          onClick={cycleAB}
+          title={
+            !sentence.clip_url
+              ? '该句切片不可用'
+              : clip.abStart === null
+                ? '设定 A 点（开始片段循环）'
+                : clip.abEnd === null
+                  ? '在当前位置设定 B 点'
+                  : '清除 A-B 循环'
+          }
+          className={[
+            'flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] tabular-nums transition-colors',
+            abActive
+              ? 'border-sky-600 bg-sky-600 text-white'
+              : clip.abStart !== null
+                ? 'border-sky-300 bg-sky-50 text-sky-700'
+                : 'border-slate-200 text-slate-500 hover:bg-slate-50',
+            sentence.clip_url ? '' : 'cursor-not-allowed opacity-40',
+          ].join(' ')}
+        >
+          <ABLoopIcon className="h-3.5 w-3.5" />
+          {clip.abStart === null
+            ? 'A-B'
+            : clip.abEnd === null
+              ? `A ${formatSeconds(clip.abStart)}`
+              : `${formatSeconds(clip.abStart)}–${formatSeconds(clip.abEnd)}`}
         </button>
 
         <span className="text-[11px] tabular-nums text-slate-400">
@@ -676,6 +780,25 @@ function SentenceCard({
           </button>
         </div>
       </div>
+
+      {/* 句子级进度条（拖动定位，便于精确设定 A-B 点） */}
+      {isActive && clip.duration > 0 && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="range"
+            min={0}
+            max={clip.duration}
+            step={0.05}
+            value={Math.min(clip.currentTime, clip.duration)}
+            onChange={(e) => clip.seek(Number(e.target.value))}
+            title="拖动定位（配合 A-B 循环精抠片段）"
+            className="h-1 w-full cursor-pointer accent-sky-600"
+          />
+          <span className="shrink-0 text-[10px] tabular-nums text-slate-400">
+            {formatSeconds(clip.currentTime)}/{formatSeconds(clip.duration)}
+          </span>
+        </div>
+      )}
 
       {/* 内容区 */}
       {editing ? (
@@ -934,6 +1057,25 @@ function DictationBox({
           )}
           {history.data && history.data.items.length === 0 && (
             <p className="px-1 py-1 text-[12px] text-slate-400">还没有听写记录</p>
+          )}
+          {history.data && history.data.items.length > 1 && (
+            <div className="mb-2 flex items-end gap-[2px] px-1" title="按时间顺序的正确率（左旧右新）">
+              {[...history.data.items].reverse().map((item) => (
+                <span
+                  key={item.id}
+                  title={`${item.accuracy}%`}
+                  className={[
+                    'w-full max-w-[16px] rounded-sm',
+                    item.is_correct
+                      ? 'bg-emerald-400'
+                      : item.accuracy >= 60
+                        ? 'bg-amber-400'
+                        : 'bg-rose-400',
+                  ].join(' ')}
+                  style={{ height: `${Math.max(6, Math.round(item.accuracy * 0.32))}px` }}
+                />
+              ))}
+            </div>
           )}
           {history.data?.items.map((item) => (
             <div

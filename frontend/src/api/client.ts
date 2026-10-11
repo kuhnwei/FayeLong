@@ -44,12 +44,37 @@ export const STATUS_LABEL: Record<string, string> = {
 
 // --------------------------- 请求基础设施 ---------------------------
 
+/** 单次请求超时（毫秒）。后端全本地，超过基本意味着进程卡住或未启动。 */
+const REQUEST_TIMEOUT = 30_000
+
+/** 网络层错误的统一文案（连接失败 / 超时 / 中断）。 */
+class NetworkError extends Error {}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  const res = await fetch(`${BASE}${path}`, { ...init, headers })
+
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers,
+      signal: init.signal ?? controller.signal,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new NetworkError('请求超时：后端可能正忙或未启动，请稍后重试')
+    }
+    throw new NetworkError('无法连接后端服务，请确认它已启动')
+  } finally {
+    window.clearTimeout(timer)
+  }
+
   if (!res.ok) {
     throw new Error(await readError(res))
   }
@@ -469,3 +494,45 @@ export const saveNote = (sentenceId: number, content: string) =>
     method: 'PUT',
     body: JSON.stringify({ content }),
   })
+
+// --------------------------- M5：笔记汇总 / 全局统计 ---------------------------
+
+/** 笔记汇总里的一条：句子 + 笔记 + 听写概要 */
+export interface MediaNoteItem {
+  sentence_id: number
+  idx: number
+  text_en: string
+  text_zh: string
+  content: string
+  updated_at: string | null
+  attempt_count: number
+  best_accuracy: number
+  mastered: boolean
+}
+
+export interface MediaNotesResponse {
+  media_id: number
+  title: string
+  total: number
+  sentence_count: number
+  items: MediaNoteItem[]
+}
+
+/** 全局学习概览 */
+export interface StatsResponse {
+  media: { total: number; done: number; processing: number; failed: number }
+  sentences: number
+  notes: number
+  vocab: { total: number; mastered: number }
+  attempts: { total: number; attempted_sentences: number; mastered_sentences: number }
+}
+
+/** 某媒体的句子笔记汇总 */
+export const getMediaNotes = (mediaId: number) =>
+  request<MediaNotesResponse>(`/media/${mediaId}/notes`)
+
+/** 笔记导出 Markdown 的下载地址 */
+export const mediaNotesExportUrl = (mediaId: number) => `${BASE}/media/${mediaId}/notes/export`
+
+/** 全局学习概览 */
+export const getStats = () => request<StatsResponse>('/stats')

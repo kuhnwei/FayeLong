@@ -61,6 +61,8 @@ export default function NoteEditor({ sentenceId }: Props) {
       setText(content)
       setOriginal(content)
       queryClient.setQueryData(['note', sentenceId], result)
+      // 笔记有变化 → 让学习页的「笔记」汇总与计数同步刷新（M5）
+      void queryClient.invalidateQueries({ queryKey: ['media-notes'] })
       setStatus('saved')
       setMessage(result?.exists ? '笔记已保存' : '笔记已清空')
       window.setTimeout(() => setStatus('idle'), 1800)
