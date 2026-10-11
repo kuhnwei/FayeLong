@@ -126,6 +126,9 @@
 - whisper 模型走 **hf-mirror.com**（约 39s 下完 461MB）；`huggingface.co` 直连不通。
 - 本环境 **PowerShell 工具不回传 stdout**；且 `Add-Type`、`cscript` 均被安全策略拦截（无法用 SAPI/TTS 造语音）。
 - **Bash 工具里用 `&` 起的后台进程会随该次调用结束而被杀**；常驻服务必须用 run_in_background。
+  反过来，**`run_in_background` 起的常驻服务会跨轮次持续存活**，用完必须主动停止（否则白占端口与内存）。
+  判断某进程是不是工具起的：看其 `ParentProcessId` 的父进程是不是 `bash.exe`，以及启动时间是否吻合。
+  注意别误杀 **WorkBuddy 自身的 node.exe**（edge-sync / sheetagent / weixinpay 等 MCP）。
 - Git Bash 下 curl 的 `-w "/..."` 会被 MSYS 路径转换搞坏，写法要避免以 `/` 开头。
 - ffmpeg 的 `-progress` 输出中 `out_time_ms` 实际单位是**微秒**（与 `out_time_us` 相同），不是毫秒。
 - 排查「改了代码但行为没变」：先查端口残留进程（`netstat -ano | grep LISTENING | grep :8000`）；旧 uvicorn 会占住端口让新实例静默启动失败。
