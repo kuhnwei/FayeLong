@@ -26,6 +26,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { installSessionInBrowser, patchFetchForSession } from './lib/session.mjs'
 
 const argv = process.argv.slice(2)
 const arg = (name, fallback) => {
@@ -34,6 +35,8 @@ const arg = (name, fallback) => {
 }
 
 const BASE = arg('--url', 'http://127.0.0.1:8000').replace(/\/$/, '')
+// v1.12 起站点需要登录：让后续所有 Node 侧 fetch 自动带上会话
+patchFetchForSession(BASE)
 const PORT = Number(arg('--port', '9336'))
 const CHROME = arg('--chrome', 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
 const WIPE = argv.includes('--wipe-test-words')
@@ -248,6 +251,8 @@ async function main() {
     cdp = await CDP.connect(page.webSocketDebuggerUrl)
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
+    // 浏览器侧也要带上会话，否则真实点击会落到登录页
+    await installSessionInBrowser(cdp, BASE)
     // 每个新文档创建时注入「朗读记录钩子」（听写验证依赖它）
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: SPEECH_HOOK })
 

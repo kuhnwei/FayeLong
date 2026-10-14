@@ -7,7 +7,17 @@ from app.models.entities import (
     Sentence,
     Setting,
     Translation,
+    User,
     Vocab,
 )
 
-__all__ = ["Attempt", "Media", "Note", "Sentence", "Setting", "Translation", "Vocab"]
+__all__ = [
+    "Attempt",
+    "Media",
+    "Note",
+    "Sentence",
+    "Setting",
+    "Translation",
+    "User",
+    "Vocab",
+]

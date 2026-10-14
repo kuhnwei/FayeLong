@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { installSessionInBrowser, patchFetchForSession } from './lib/session.mjs'
 
 const argv = process.argv.slice(2)
 const arg = (name, fallback) => {
@@ -25,6 +26,8 @@ const arg = (name, fallback) => {
 }
 
 const BASE = arg('--url', 'http://127.0.0.1:8000').replace(/\/$/, '')
+// v1.12 起站点需要登录：让后续所有 Node 侧 fetch 自动带上会话
+patchFetchForSession(BASE)
 const MEDIA_ID = Number(arg('--media', '3'))
 const PORT = Number(arg('--port', '9334'))
 const CHROME = arg('--chrome', 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
@@ -141,6 +144,8 @@ async function main() {
   // ---------- 准备：造一条笔记 + 一次听写（供面板与趋势条验证）----------
   const detail = await (await fetch(`${BASE}/api/media/${MEDIA_ID}`)).json()
   const target = detail.sentences?.[1]
+  // 目标句在句子数组里的下标（一句一页后用宫格按序号跳）
+  const TARGET_INDEX = Math.max(0, (detail.sentences ?? []).findIndex((s) => s.id === target?.id))
   const NOTE_STAMP = `e2e-m5-note-${Date.now()}`
   if (target) {
     await fetch(`${BASE}/api/notes/${target.id}`, {
@@ -183,6 +188,8 @@ async function main() {
     cdp = await CDP.connect(page.webSocketDebuggerUrl)
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
+    // 浏览器侧也要带上会话，否则真实点击会落到登录页
+    await installSessionInBrowser(cdp, BASE)
 
     // ---------- 1. 媒体库：概览卡片 + 搜索 ----------
     await cdp.send('Page.navigate', { url: `${BASE}/` })
@@ -283,7 +290,9 @@ async function main() {
         item.click();
         await sleep(500);
         out.jumped = !document.querySelector('div[role="dialog"]');
-        out.highlighted = Boolean(document.querySelector('[id^="sentence-"].ring-2'));
+        // v1.12 一句一页：目标句不再有固定 id，改看句子舞台是否被高亮环包住
+        const card = document.querySelector('[data-testid="sentence-stage-card"]');
+        out.highlighted = Boolean(card && card.className.includes('ring-2'));
       }
       return out;
     })()`)
@@ -297,8 +306,13 @@ async function main() {
     // ---------- 4. 听写历史趋势条 ----------
     const trendProbe = await cdp.evaluate(`(async () => {
       ${HELPERS}
-      const card = document.getElementById(${JSON.stringify(`sentence-${target?.id ?? 0}`)});
-      if (!card) return { ok: false, error: '未找到目标句子卡片' };
+      // v1.12 一句一页：没有「句子卡片」了，改用底部宫格跳到目标句
+      const card = document.querySelector('[data-testid="sentence-stage-card"]');
+      const grid = [...document.querySelectorAll('[data-testid="sentence-grid"] button')];
+      if (!card || !grid.length) return { ok: false, error: '未找到句子舞台或句子宫格' };
+      const slot = grid[${TARGET_INDEX}] || grid[0];
+      slot.click();
+      await sleep(450);
       const btn = [...card.querySelectorAll('button')].find((b) => b.textContent.includes('听写历史'));
       if (!btn) return { ok: false, error: '未找到听写历史入口' };
       btn.click();

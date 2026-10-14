@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { installSessionInBrowser, patchFetchForSession } from './lib/session.mjs'
 
 const argv = process.argv.slice(2)
 const arg = (name, fallback) => {
@@ -20,6 +21,8 @@ const arg = (name, fallback) => {
 }
 
 const BASE = arg('--url', 'http://127.0.0.1:8000').replace(/\/$/, '')
+// v1.12 起站点需要登录：让后续所有 Node 侧 fetch 自动带上会话
+patchFetchForSession(BASE)
 const MEDIA_ID = arg('--media', '3')
 const PORT = Number(arg('--port', '9333'))
 const CHROME = arg(
@@ -161,6 +164,8 @@ async function main() {
     cdp = await CDP.connect(page.webSocketDebuggerUrl)
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
+    // 浏览器侧也要带上会话，否则真实点击会落到登录页
+    await installSessionInBrowser(cdp, BASE)
 
     // ---------- 1. 打开学习页 ----------
     await cdp.send('Page.navigate', { url: `${BASE}/study/${MEDIA_ID}` })
@@ -224,10 +229,19 @@ async function main() {
     const noteProbe = await cdp.evaluate(`(async () => {
       ${HELPERS}
       const out = { ok: false, error: null, saved: null, echoed: null };
-      const openBtn = await waitFor(() => byText(document.body, '添加笔记') || byText(document.body, '查看笔记'));
-      if (!openBtn) { out.error = '未找到笔记入口'; return out; }
-      openBtn.click();
-      const area = await waitFor(() => document.querySelector('textarea[placeholder*="记录这个词"]'));
+      // v1.12 一句一页改版：句内笔记收进了「笔记」折叠面板，先展开
+      const toggle = await waitFor(() => document.querySelector('[data-testid="toggle-note"]'));
+      if (!toggle) { out.error = '未找到句内「笔记」入口'; return out; }
+      toggle.click();
+      // 该句已有笔记时 NoteEditor 会自动展开（按钮文案变「收起笔记」）；
+      // 注意 React 重渲染是异步的，这里必须 waitFor 而不是同步 querySelector
+      let area = await waitFor(() => document.querySelector('textarea[placeholder*="记录这个词"]'), 4000);
+      if (!area) {
+        const openBtn = await waitFor(() => byText(document.body, '添加笔记') || byText(document.body, '查看笔记'), 4000);
+        if (!openBtn) { out.error = '未找到笔记入口'; return out; }
+        openBtn.click();
+        area = await waitFor(() => document.querySelector('textarea[placeholder*="记录这个词"]'), 6000);
+      }
       if (!area) { out.error = '笔记输入框未出现'; return out; }
       const stamp = 'e2e-note-' + Date.now();
       const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
@@ -254,7 +268,10 @@ async function main() {
     await sleep(1800)
     const noteEcho = await cdp.evaluate(`(async () => {
       ${HELPERS}
+      // v1.12：笔记入口默认收起，先展开再读；
       // 有笔记时 NoteEditor 默认展开，内容存放在 textarea.value（不是文本节点）
+      const toggle = await waitFor(() => document.querySelector('[data-testid="toggle-note"]'), 12000);
+      if (toggle) toggle.click();
       const area = await waitFor(() => {
         const el = document.querySelector('textarea[placeholder*="记录这个词"]');
         return el && el.value && el.value.trim() ? el : null;

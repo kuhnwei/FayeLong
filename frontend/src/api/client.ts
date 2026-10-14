@@ -50,6 +50,9 @@ const REQUEST_TIMEOUT = 30_000
 /** 网络层错误的统一文案（连接失败 / 超时 / 中断）。 */
 class NetworkError extends Error {}
 
+/** 收到 401 时广播的事件名：App 监听它把界面切回登录页。 */
+export const UNAUTHORIZED_EVENT = 'fayelong:unauthorized'
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !headers.has('Content-Type')) {
@@ -64,6 +67,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     res = await fetch(`${BASE}${path}`, {
       ...init,
       headers,
+      // 会话是 HttpOnly cookie，必须显式带上（同源请求）
+      credentials: 'same-origin',
       signal: init.signal ?? controller.signal,
     })
   } catch (err) {
@@ -75,6 +80,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     window.clearTimeout(timer)
   }
 
+  if (res.status === 401) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+    throw new Error(await readError(res))
+  }
   if (!res.ok) {
     throw new Error(await readError(res))
   }
@@ -536,3 +545,37 @@ export const mediaNotesExportUrl = (mediaId: number) => `${BASE}/media/${mediaId
 
 /** 全局学习概览 */
 export const getStats = () => request<StatsResponse>('/stats')
+
+// --------------------------- 鉴权（v1.12） ---------------------------
+
+/** 站点鉴权状态：决定渲染「首次设置」「登录页」还是应用本体 */
+export interface AuthStatus {
+  needs_setup: boolean
+  authenticated: boolean
+  username: string | null
+  min_password_length: number
+}
+
+/** 问后端：要初始化吗 / 我登录了吗。公开接口，未登录也能调。 */
+export const getAuthStatus = () => request<AuthStatus>('/auth/status')
+
+/** 首次创建账号（仅在还没有账号时可用，建完即锁定） */
+export const setupAccount = (username: string, password: string) =>
+  request<AuthStatus>('/auth/setup', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+
+export const login = (username: string, password: string) =>
+  request<AuthStatus>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+
+export const logout = () => request<AuthStatus>('/auth/logout', { method: 'POST' })
+
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  request<AuthStatus>('/auth/password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })

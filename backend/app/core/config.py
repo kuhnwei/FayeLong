@@ -115,6 +115,10 @@ class Settings(BaseSettings):
     # 词典（M4 / FR-S6）：ECDICT 离线词库；未收录时可选用在线翻译兜底
     dict_online_fallback: bool = True           # 词库未收录时用在线引擎给个参考释义
 
+    # 登录门禁（v1.12）：单账号 + 首次访问引导创建
+    auth_session_days: int = 30                 # 会话有效期（天）
+    auth_min_password_length: int = 8           # 密码最短长度（公网部署建议不要调低）
+
     # 翻译：免费在线引擎链（按顺序回退），均为免密钥服务
     #   youdao   -> 有道公开演示接口（质量较好）
     #   mymemory -> MyMemory 翻译记忆库（配额兜底）

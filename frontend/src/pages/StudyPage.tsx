@@ -1,10 +1,20 @@
-/** 学习页：单句听写 + 标红校验 + 结果校对（M2 / M3）。
+/** 学习页：一句一页的听写工作台（v1.12 改版）。
  *
- * M2 交付：识别原文 / 中文翻译 / 句子切片 + 人工校对（改文本 / 改时间 / 拆分 / 合并 / 重译）。
- * M3 交付：听写输入框、词级标红校验、正确率与掌握度、听写历史（FR-S1~S5、FR-A4）。
+ * 为什么从「卡片滚动列表」改成「一句一页」：
+ * 听写本来就是「专注一句」的任务 —— 一屏一句才能把字号放到最大，
+ * 也省掉了在长列表里来回滚动找位置。整页不出现滚动条，
+ * 翻页靠底部按钮、方向键或数字宫格。
+ *
+ * 三段式布局（高度锁定在视口内）：
+ *   顶部条（媒体信息 + 整体操作）
+ *   ├─ 句子舞台（flex-1，正文大字自适应）
+ *   └─ 底部（上一句 / 序号 / 下一句 + 句子索引宫格）
+ *
+ * 原有能力全部保留：单句播放 / 单句循环 / A-B 循环、听写输入与词级标红、
+ * 查词浮层、笔记、拆分 / 合并 / 重译 / 编辑。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -63,6 +73,13 @@ interface StatOverride {
   mastered: boolean
 }
 
+/** 逐句的听写草稿：翻页回来时输入的内容与上次校验结果都还在 */
+interface Draft {
+  text: string
+  result: AttemptResult | null
+}
+const EMPTY_DRAFT: Draft = { result: null, text: '' }
+
 /** 被点击单词在视口中的位置（用于定位浮层） */
 export interface WordRect {
   top: number
@@ -71,13 +88,38 @@ export interface WordRect {
   width: number
 }
 
+/** 正文自适应字号：句子越短，字越大 —— 一句一屏正是放大字号的时机。 */
+function stageFontSize(length: number): string {
+  if (length <= 45) return 'clamp(1.75rem, 3.4vw, 2.9rem)'
+  if (length <= 90) return 'clamp(1.45rem, 2.8vw, 2.3rem)'
+  if (length <= 150) return 'clamp(1.2rem, 2.1vw, 1.85rem)'
+  return 'clamp(1rem, 1.7vw, 1.5rem)'
+}
+
+/** 译文跟随正文但小一档，避免与原文抢视线 */
+function translationFontSize(length: number): string {
+  if (length <= 30) return 'clamp(0.95rem, 1.5vw, 1.25rem)'
+  if (length <= 60) return 'clamp(0.9rem, 1.3vw, 1.1rem)'
+  return 'clamp(0.85rem, 1.1vw, 1rem)'
+}
+
+/** 宫格格子的状态色：当前 > 已掌握 > 练过 > 未听 */
+function gridClass(sentence: SentenceItem, active: boolean): string {
+  if (active) return 'bg-slate-900 text-white ring-2 ring-slate-400'
+  if (sentence.mastered) return 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+  if (sentence.attempt_count > 0) return 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+  return 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+}
+
 export default function StudyPage() {
   const { mediaId } = useParams()
   const id = Number(mediaId)
   const queryClient = useQueryClient()
   const openPlayer = usePlayer((s) => s.open)
   const currentMedia = usePlayer((s) => s.current)
+  const hasPlayer = usePlayer((s) => s.current !== null)
   const clip = useClipPlayer()
+  const stopClip = clip.stop
 
   const [live, setLive] = useState<ProgressEventData | null>(null)
   const [revealEn, setRevealEn] = useState<Record<number, boolean>>({})
@@ -88,7 +130,14 @@ export default function StudyPage() {
   const [stats, setStats] = useState<Record<number, StatOverride>>({})
   const [wordTarget, setWordTarget] = useState<WordPopoverTarget | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [correctOpen, setCorrectOpen] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [drafts, setDrafts] = useState<Record<number, Draft>>({})
   const [highlightId, setHighlightId] = useState<number | null>(null)
+
+  //: 当前句在句子数组里的下标（注意与 sentence.idx 不同：后者是切分序号）
+  const [index, setIndex] = useState(0)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['media', id],
@@ -173,6 +222,7 @@ export default function StudyPage() {
     onSuccess: () => {
       setNotice('已开始重新识别，完成后自动刷新')
       setStats({})
+      setDrafts({})
       void queryClient.invalidateQueries({ queryKey: ['media', id] })
     },
     onError: (e: Error) => setNotice(`重新识别失败：${e.message}`),
@@ -182,7 +232,7 @@ export default function StudyPage() {
     mutationFn: () => clearClips(id),
     onSuccess: () => {
       setNotice('切片已清理，释放磁盘空间（逐句播放暂不可用）')
-      clip.stop()
+      stopClip()
       void queryClient.invalidateQueries({ queryKey: ['media', id] })
     },
     onError: (e: Error) => setNotice(`清理失败：${e.message}`),
@@ -199,6 +249,51 @@ export default function StudyPage() {
       }),
     [sentences, stats],
   )
+
+  const total = effective.length
+  const current = total > 0 ? (effective[Math.min(index, total - 1)] ?? null) : null
+
+  // 句子数变化（拆分 / 合并 / 重新识别）后把下标收回合法范围
+  useEffect(() => {
+    setIndex((i) => Math.min(i, Math.max(sentences.length - 1, 0)))
+  }, [sentences.length])
+
+  // 给键盘监听读最新值，避免把回调绑死在下标上反复重绑
+  const navRef = useRef({ index, total })
+  navRef.current = { index, total }
+
+  /** 跳到第 next 句（越界自动收敛）；切句时停掉上一句的音频 */
+  const goTo = useCallback(
+    (next: number) => {
+      const { total: count } = navRef.current
+      const last = Math.max(count - 1, 0)
+      const clamped = Math.min(Math.max(next, 0), last)
+      setIndex(clamped)
+      stopClip()
+    },
+    [stopClip],
+  )
+
+  // ← / → 翻页。焦点在输入框里时不劫持（那时方向键是移动光标）
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (editingId !== null) return
+      const el = event.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+        return
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        goTo(navRef.current.index + 1)
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        goTo(navRef.current.index - 1)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [goTo, editingId])
 
   const summary = useMemo(() => {
     const attempted = effective.filter((s) => s.attempt_count > 0)
@@ -237,20 +332,28 @@ export default function StudyPage() {
     else setRevealZh(map)
   }
 
-  /** 从笔记面板跳到某句：展开原文 + 滚动定位 + 短暂高亮 */
+  /** 从笔记面板跳到某句：直接翻到那一页 + 展开原文 + 短暂高亮 */
   const jumpToSentence = (sid: number) => {
+    const target = effective.findIndex((s) => s.id === sid)
+    if (target < 0) return
     setRevealEn((prev) => ({ ...prev, [sid]: true }))
     setHighlightId(sid)
-    window.setTimeout(() => {
-      document
-        .getElementById(`sentence-${sid}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 80)
+    goTo(target)
     window.setTimeout(() => setHighlightId((cur) => (cur === sid ? null : cur)), 2400)
   }
 
+  const patchDraft = useCallback((sid: number, patch: Partial<Draft>) => {
+    setDrafts((prev) => ({ ...prev, [sid]: { ...(prev[sid] ?? EMPTY_DRAFT), ...patch } }))
+  }, [])
+
+  // 整页高度锁在视口内：扣掉顶部条与 main 的内边距（播放条打开时还要多扣一层）
+  const pageHeight = hasPlayer ? 'calc(100vh - 197px)' : 'calc(100vh - 109px)'
+
   return (
-    <div className="space-y-5">
+    <div
+      className="flex min-h-[440px] flex-col gap-3 overflow-hidden"
+      style={{ height: pageHeight }}
+    >
       {/* 隐藏的句子音频元素 */}
       <audio ref={clip.bind} preload="auto" className="hidden" />
 
@@ -268,288 +371,339 @@ export default function StudyPage() {
         <NotesPanel mediaId={id} onClose={() => setNotesOpen(false)} onJump={jumpToSentence} />
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          to="/"
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          ← 媒体库
-        </Link>
-        <span className="text-[12px] text-slate-400">
-          学习页 · 听音频 → 输入听到的内容 → 提交后标红比对
-        </span>
-        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[12px] text-slate-500">
-          <input
-            type="checkbox"
-            checked={autoReveal}
-            onChange={(e) => setAutoReveal(e.target.checked)}
-            className="h-3.5 w-3.5 accent-slate-900"
-          />
-          提交后自动显示原文
-        </label>
+      {/* --------------------------- 顶部条 --------------------------- */}
+      <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <Link
+            to="/"
+            title="返回媒体库"
+            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            ←
+          </Link>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <h2 className="truncate text-[14px] font-medium text-slate-900">
+                {data?.title ?? '加载中…'}
+              </h2>
+              {total > 0 && (
+                <span className="shrink-0 text-[12px] tabular-nums text-slate-400">
+                  第 {Math.min(index + 1, total)} / {total} 句
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11px] text-slate-400">
+              <span
+                className={[
+                  'rounded-full px-2 py-0.5',
+                  status === 'failed'
+                    ? 'bg-red-50 text-red-600'
+                    : processing
+                      ? 'bg-amber-50 text-amber-600'
+                      : 'bg-emerald-50 text-emerald-600',
+                ].join(' ')}
+              >
+                {STATUS_LABEL[status] ?? status}
+                {processing && ` ${progress}%`}
+              </span>
+              {data && <span className="tabular-nums">{formatDuration(data.duration_ms)}</span>}
+              {data && <span>{formatBytes(data.size_bytes)}</span>}
+              {data && <span>{data.type === 'video' ? '视频（仅音轨）' : '音频'}</span>}
+              {total > 0 && (
+                <span className="flex items-center gap-1">
+                  <TargetIcon className="h-3 w-3" />
+                  已听写
+                  <span className="tabular-nums text-slate-600">
+                    {summary.attempted}/{summary.total}
+                  </span>
+                  · 已掌握 <span className="tabular-nums text-emerald-600">{summary.mastered}</span>
+                  {summary.attempted > 0 && (
+                    <>
+                      · 平均最佳 <span className="tabular-nums text-slate-600">{summary.avg}%</span>
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              disabled={!playable}
+              onClick={() => data && openPlayer(data, true)}
+              className={[
+                'rounded-lg px-2.5 py-1.5 text-xs transition-colors',
+                playable
+                  ? 'bg-slate-900 text-white hover:bg-slate-700'
+                  : 'cursor-not-allowed bg-slate-100 text-slate-400',
+              ].join(' ')}
+            >
+              {currentMedia?.id === data?.id ? '整段播放中' : '整段播放'}
+            </button>
+            {total > 0 && (
+              <button
+                type="button"
+                onClick={() => setNotesOpen(true)}
+                title="查看本媒体全部句子笔记"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                <NoteIcon className="h-3.5 w-3.5" />
+                笔记{noteCount > 0 ? `（${noteCount}）` : ''}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setToolsOpen((v) => !v)}
+              title="更多操作"
+              className={[
+                'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                toolsOpen
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              工具 {toolsOpen ? '▴' : '▾'}
+            </button>
+          </div>
+        </div>
+
+        {/* 工具面板（低频操作收在这里，避免顶部条变高） */}
+        {toolsOpen && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-2.5 text-[11px]">
+            <label className="flex cursor-pointer items-center gap-1.5 text-slate-500">
+              <input
+                type="checkbox"
+                checked={autoReveal}
+                onChange={(e) => setAutoReveal(e.target.checked)}
+                className="h-3.5 w-3.5 accent-slate-900"
+              />
+              答错后自动显示原文
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => revealAll('en')}
+                className="text-slate-500 hover:text-slate-900"
+              >
+                展开全部原文
+              </button>
+              <span className="text-slate-200">·</span>
+              <button
+                type="button"
+                onClick={() => revealAll('zh')}
+                className="text-slate-500 hover:text-slate-900"
+              >
+                展开全部翻译
+              </button>
+              <span className="text-slate-200">·</span>
+              <button
+                type="button"
+                onClick={() => revealAll('none')}
+                className="text-slate-500 hover:text-slate-900"
+              >
+                全部折叠
+              </button>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                disabled={rebuildMutation.isPending || processing || !data?.has_audio}
+                onClick={() => rebuildMutation.mutate()}
+                title="用当前模型重新识别（会重建句子，原笔记与听写记录将清除）"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+              >
+                <RefreshIcon className="h-3.5 w-3.5" />
+                重新识别
+              </button>
+              {clipsReady && (
+                <button
+                  type="button"
+                  disabled={clearClipsMutation.isPending}
+                  onClick={() => clearClipsMutation.mutate()}
+                  title="删除句子切片以回收磁盘空间"
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                >
+                  清理切片
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {status === 'failed' && data?.error && (
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600">
+            <AlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{data.error}</span>
+          </div>
+        )}
+
+        {processing && (
+          <div className="mt-2.5">
+            <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <span>正在处理：解码 → 识别 → 翻译 → 切片</span>
+              <span className="tabular-nums">
+                {live?.stage ?? STATUS_LABEL[status] ?? status} {progress}%
+              </span>
+            </div>
+            <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-slate-900 transition-[width] duration-500"
+                style={{ width: `${Math.max(2, progress)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {isLoading && <p className="py-3 text-center text-[13px] text-slate-400">加载中…</p>}
+        {isError && (
+          <p className="py-3 text-center text-[13px] text-red-600">{(error as Error).message}</p>
+        )}
+        {notice && <p className="pt-2 text-[12px] text-sky-700">{notice}</p>}
       </div>
 
-      {isLoading && (
-        <p className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-[13px] text-slate-400">
-          加载中…
-        </p>
-      )}
-
-      {isError && (
-        <p className="rounded-xl border border-red-100 bg-red-50 px-5 py-8 text-center text-[13px] text-red-600">
-          {(error as Error).message}
-        </p>
-      )}
-
-      {notice && (
-        <div className="rounded-lg border border-sky-100 bg-sky-50 px-4 py-2.5 text-[13px] text-sky-700">
-          {notice}
+      {/* --------------------------- 句子舞台 --------------------------- */}
+      {current ? (
+        <SentenceStage
+          key={current.id}
+          sentence={current}
+          clip={clip}
+          highlight={highlightId === current.id}
+          showEn={revealEn[current.id] ?? false}
+          showZh={revealZh[current.id] ?? false}
+          onToggleEn={() => setRevealEn((prev) => ({ ...prev, [current.id]: !(prev[current.id] ?? false) }))}
+          onToggleZh={() => setRevealZh((prev) => ({ ...prev, [current.id]: !(prev[current.id] ?? false) }))}
+          autoReveal={autoReveal}
+          draft={drafts[current.id] ?? EMPTY_DRAFT}
+          onDraft={(patch) => patchDraft(current.id, patch)}
+          onRecorded={(stat) => setStats((prev) => ({ ...prev, [current.id]: stat }))}
+          editing={editingId === current.id}
+          onStartEdit={() => setEditingId(current.id)}
+          onCancelEdit={() => setEditingId(null)}
+          onSave={(patch) => editMutation.mutate({ sid: current.id, patch })}
+          onRetranslate={() => retranslateMutation.mutate(current.id)}
+          onMergeNext={() => mergeMutation.mutate(current.id)}
+          onSplitAtPlayhead={(atMs) => splitMutation.mutate({ sid: current.id, atMs })}
+          onWordClick={(word, rect) =>
+            setWordTarget({
+              word,
+              sentenceId: current.id,
+              mediaId: id,
+              context: current.text_en,
+              rect,
+            })
+          }
+          correctOpen={correctOpen}
+          setCorrectOpen={setCorrectOpen}
+          noteOpen={noteOpen}
+          setNoteOpen={setNoteOpen}
+          busy={
+            editMutation.isPending ||
+            retranslateMutation.isPending ||
+            splitMutation.isPending ||
+            mergeMutation.isPending
+          }
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-center">
+          <p className="text-[13px] text-slate-400">
+            {!data
+              ? '加载中…'
+              : processing
+                ? '正在处理，完成后会自动出现句子'
+                : status === 'failed'
+                  ? '处理失败，请查看上方错误信息后在「工具」里重试'
+                  : '还没有句子。'}
+          </p>
         </div>
       )}
 
-      {data && (
-        <>
-          {/* 头部信息 */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h2 className="truncate text-[16px] font-medium text-slate-900">{data.title}</h2>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-400">
-                  <span className="tabular-nums">{formatDuration(data.duration_ms)}</span>
-                  <span>{formatBytes(data.size_bytes)}</span>
-                  <span>{data.type === 'video' ? '视频（仅音轨）' : '音频'}</span>
-                  {sentences.length > 0 && <span>共 {sentences.length} 句</span>}
-                  <span className="truncate">{data.original_name}</span>
-                </div>
-              </div>
+      {/* --------------------------- 底部：翻页 + 宫格 --------------------------- */}
+      {total > 0 && (
+        <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={index <= 0}
+              onClick={() => goTo(index - 1)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ← 上一句
+            </button>
 
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                <span
-                  className={[
-                    'rounded-full px-2.5 py-1 text-[11px]',
-                    status === 'failed'
-                      ? 'bg-red-50 text-red-600'
-                      : processing
-                        ? 'bg-amber-50 text-amber-600'
-                        : 'bg-emerald-50 text-emerald-600',
-                  ].join(' ')}
-                >
-                  {STATUS_LABEL[status] ?? status}
-                  {processing && ` ${progress}%`}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
+                {current ? `${formatSeconds(current.start_ms / 1000)} – ${formatSeconds(current.end_ms / 1000)}` : ''}
+              </span>
+              <div className="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-slate-400">
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-emerald-200" />已掌握
                 </span>
-                <button
-                  type="button"
-                  disabled={!playable}
-                  onClick={() => openPlayer(data, true)}
-                  className={[
-                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors',
-                    playable
-                      ? 'bg-slate-900 text-white hover:bg-slate-700'
-                      : 'cursor-not-allowed bg-slate-100 text-slate-400',
-                  ].join(' ')}
-                >
-                  <PlayIcon className="h-3 w-3" />
-                  {currentMedia?.id === data.id ? '正在整段播放' : '整段播放'}
-                </button>
-                <button
-                  type="button"
-                  disabled={rebuildMutation.isPending || processing || !data.has_audio}
-                  onClick={() => rebuildMutation.mutate()}
-                  title="用当前模型重新识别（会重建句子，原笔记与听写记录将清除）"
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
-                >
-                  <RefreshIcon className="h-3.5 w-3.5" />
-                  重新识别
-                </button>
-                {sentences.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setNotesOpen(true)}
-                    title="查看本媒体全部句子笔记"
-                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
-                  >
-                    <NoteIcon className="h-3.5 w-3.5" />
-                    笔记{noteCount > 0 ? `（${noteCount}）` : ''}
-                  </button>
-                )}
-                {clipsReady && (
-                  <button
-                    type="button"
-                    disabled={clearClipsMutation.isPending}
-                    onClick={() => clearClipsMutation.mutate()}
-                    title="删除句子切片以回收磁盘空间"
-                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40"
-                  >
-                    清理切片
-                  </button>
-                )}
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-amber-200" />练过
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-slate-200" />未听
+                </span>
+                <span className="hidden sm:inline">· ← → 翻页</span>
               </div>
             </div>
 
-            {status === 'failed' && data.error && (
-              <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600">
-                <AlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{data.error}</span>
-              </div>
-            )}
-
-            {processing && (
-              <div className="mt-3">
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span>正在处理：解码 → 识别 → 翻译 → 切片</span>
-                  <span className="tabular-nums">
-                    {live?.stage ?? STATUS_LABEL[status] ?? status} {progress}%
-                  </span>
-                </div>
-                <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-slate-900 transition-[width] duration-500"
-                    style={{ width: `${Math.max(2, progress)}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  {live?.sentence_count
-                    ? `已切分出 ${live.sentence_count} 句`
-                    : '完成后会自动出现句子列表'}
-                </p>
-              </div>
-            )}
-
-            {!processing && status === 'done' && !clipsReady && sentences.length > 0 && (
-              <p className="mt-3 text-[12px] text-amber-600">
-                句子音频切片未就绪（可能已被清理），点击「重新识别」可重建。
-              </p>
-            )}
-
-            {/* 听写进度 */}
-            {sentences.length > 0 && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
-                  <span className="flex items-center gap-1.5 text-slate-600">
-                    <TargetIcon className="h-3.5 w-3.5 text-slate-400" />
-                    已听写
-                    <span className="font-medium tabular-nums text-slate-900">
-                      {summary.attempted}/{summary.total}
-                    </span>
-                    句
-                  </span>
-                  <span className="text-slate-400">
-                    已掌握 <span className="tabular-nums text-emerald-600">{summary.mastered}</span> 句
-                  </span>
-                  <span className="text-slate-400">
-                    提交 <span className="tabular-nums">{summary.attempts}</span> 次
-                  </span>
-                  {summary.attempted > 0 && (
-                    <span className="text-slate-400">
-                      平均最佳 <span className="tabular-nums text-slate-600">{summary.avg}%</span>
-                    </span>
-                  )}
-                  <div className="ml-auto flex items-center gap-2 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => revealAll('en')}
-                      className="text-slate-500 hover:text-slate-900"
-                    >
-                      展开全部原文
-                    </button>
-                    <span className="text-slate-200">·</span>
-                    <button
-                      type="button"
-                      onClick={() => revealAll('zh')}
-                      className="text-slate-500 hover:text-slate-900"
-                    >
-                      展开全部翻译
-                    </button>
-                    <span className="text-slate-200">·</span>
-                    <button
-                      type="button"
-                      onClick={() => revealAll('none')}
-                      className="text-slate-500 hover:text-slate-900"
-                    >
-                      全部折叠
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-[width] duration-500"
-                    style={{
-                      width: `${summary.total ? (summary.mastered / summary.total) * 100 : 0}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+            <button
+              type="button"
+              disabled={index >= total - 1}
+              onClick={() => goTo(index + 1)}
+              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              下一句 →
+            </button>
           </div>
 
-          {/* 句子列表 */}
-          <div className="space-y-3">
-            {sentences.length === 0 && !processing && (
-              <div className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center">
-                <p className="text-[13px] text-slate-400">
-                  {status === 'failed'
-                    ? '处理失败，请查看上方错误信息后重试'
-                    : '还没有句子。'}
-                </p>
-              </div>
-            )}
-
-            {effective.map((sentence) => (
-              <SentenceCard
+          {/* 句子索引宫格：点击直跳 */}
+          <div
+            data-testid="sentence-grid"
+            className="mt-2 flex max-h-[7.5rem] flex-wrap gap-1 overflow-y-auto"
+          >
+            {effective.map((sentence, i) => (
+              <button
                 key={sentence.id}
-                sentence={sentence}
-                clip={clip}
-                highlight={highlightId === sentence.id}
-                revealEn={revealEn}
-                revealZh={revealZh}
-                setRevealEn={setRevealEn}
-                setRevealZh={setRevealZh}
-                autoReveal={autoReveal}
-                onRecorded={(stat) => setStats((prev) => ({ ...prev, [sentence.id]: stat }))}
-                editing={editingId === sentence.id}
-                onStartEdit={() => setEditingId(sentence.id)}
-                onCancelEdit={() => setEditingId(null)}
-                onSave={(patch) => editMutation.mutate({ sid: sentence.id, patch })}
-                onRetranslate={() => retranslateMutation.mutate(sentence.id)}
-                onMergeNext={() => mergeMutation.mutate(sentence.id)}
-                onSplitAtPlayhead={(atMs) =>
-                  splitMutation.mutate({ sid: sentence.id, atMs })
+                type="button"
+                onClick={() => goTo(i)}
+                title={
+                  `第 ${i + 1} 句` +
+                  (sentence.attempt_count > 0
+                    ? ` · 练过 ${sentence.attempt_count} 次 · 最佳 ${sentence.best_accuracy}%`
+                    : ' · 还没听写')
                 }
-                onWordClick={(word, rect) =>
-                  setWordTarget({
-                    word,
-                    sentenceId: sentence.id,
-                    mediaId: id,
-                    context: sentence.text_en,
-                    rect,
-                  })
-                }
-                busy={
-                  editMutation.isPending ||
-                  retranslateMutation.isPending ||
-                  splitMutation.isPending ||
-                  mergeMutation.isPending
-                }
-              />
+                className={[
+                  'h-7 min-w-[1.75rem] rounded-md px-1 text-[11px] tabular-nums transition-colors',
+                  gridClass(sentence, i === index),
+                ].join(' ')}
+              >
+                {i + 1}
+              </button>
             ))}
           </div>
-        </>
+        </div>
       )}
     </div>
   )
 }
 
-// --------------------------- 句子卡片 ---------------------------
+// --------------------------- 句子舞台 ---------------------------
 
-interface SentenceCardProps {
+interface SentenceStageProps {
   sentence: SentenceItem
   clip: ReturnType<typeof useClipPlayer>
   highlight: boolean
-  revealEn: Record<number, boolean>
-  revealZh: Record<number, boolean>
-  setRevealEn: React.Dispatch<React.SetStateAction<Record<number, boolean>>>
-  setRevealZh: React.Dispatch<React.SetStateAction<Record<number, boolean>>>
+  showEn: boolean
+  showZh: boolean
+  onToggleEn: () => void
+  onToggleZh: () => void
   autoReveal: boolean
+  draft: Draft
+  onDraft: (patch: Partial<Draft>) => void
   onRecorded: (stat: StatOverride) => void
   editing: boolean
   onStartEdit: () => void
@@ -559,18 +713,24 @@ interface SentenceCardProps {
   onMergeNext: () => void
   onSplitAtPlayhead: (atMs: number) => void
   onWordClick: (word: string, rect: WordRect) => void
+  correctOpen: boolean
+  setCorrectOpen: (next: boolean) => void
+  noteOpen: boolean
+  setNoteOpen: (next: boolean) => void
   busy: boolean
 }
 
-function SentenceCard({
+function SentenceStage({
   sentence,
   clip,
   highlight,
-  revealEn,
-  revealZh,
-  setRevealEn,
-  setRevealZh,
+  showEn,
+  showZh,
+  onToggleEn,
+  onToggleZh,
   autoReveal,
+  draft,
+  onDraft,
   onRecorded,
   editing,
   onStartEdit,
@@ -580,8 +740,12 @@ function SentenceCard({
   onMergeNext,
   onSplitAtPlayhead,
   onWordClick,
+  correctOpen,
+  setCorrectOpen,
+  noteOpen,
+  setNoteOpen,
   busy,
-}: SentenceCardProps) {
+}: SentenceStageProps) {
   const [draftEn, setDraftEn] = useState(sentence.text_en)
   const [draftZh, setDraftZh] = useState(sentence.text_zh)
 
@@ -592,8 +756,6 @@ function SentenceCard({
 
   const isActive = clip.activeId === sentence.id
   const isPlaying = isActive && clip.playing
-  const showEn = revealEn[sentence.id] ?? false
-  const showZh = revealZh[sentence.id] ?? false
   const canSplit = isActive && clip.currentTime > 0.4
 
   // 播放位置 → 绝对时间（切片带 120ms 首部留白，这里回算）
@@ -622,43 +784,38 @@ function SentenceCard({
     clip.clearAB()
   }
 
+  const iconBtn =
+    'flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed'
+  const chipBtn =
+    'flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] transition-colors'
+
   return (
     <div
-      id={`sentence-${sentence.id}`}
+      data-testid="sentence-stage-card"
       className={[
-        'rounded-xl border bg-white p-4 transition-colors',
-        highlight
-          ? 'border-amber-400 ring-2 ring-amber-200'
-          : isActive
-            ? 'border-slate-900'
-            : 'border-slate-200',
+        'flex min-h-0 flex-1 flex-col gap-3 rounded-xl border bg-white p-4 transition-colors',
+        highlight ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200',
       ].join(' ')}
     >
-      {/* 工具栏 */}
+      {/* 句子工具行 */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="w-9 shrink-0 text-[11px] tabular-nums text-slate-400">
+        <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
           #{sentence.idx + 1}
         </span>
 
         <button
           type="button"
           disabled={!sentence.clip_url}
-          onClick={() =>
-            sentence.clip_url && clip.toggle(sentence.id, sentence.clip_url)
-          }
+          onClick={() => sentence.clip_url && clip.toggle(sentence.id, sentence.clip_url)}
           title={sentence.clip_url ? '播放本句' : '该句切片不可用'}
           className={[
-            'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
+            iconBtn,
             sentence.clip_url
               ? 'bg-slate-900 text-white hover:bg-slate-700'
-              : 'cursor-not-allowed bg-slate-100 text-slate-300',
+              : 'bg-slate-100 text-slate-300',
           ].join(' ')}
         >
-          {isPlaying ? (
-            <PauseIcon className="h-3 w-3" />
-          ) : (
-            <PlayIcon className="ml-0.5 h-3 w-3" />
-          )}
+          {isPlaying ? <PauseIcon className="h-3 w-3" /> : <PlayIcon className="ml-0.5 h-3 w-3" />}
         </button>
 
         <button
@@ -667,7 +824,7 @@ function SentenceCard({
           onClick={() => clip.setLoop(!clip.loop)}
           title={clip.loop ? '关闭单句循环' : '单句循环'}
           className={[
-            'flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] transition-colors',
+            chipBtn,
             clip.loop
               ? 'border-slate-900 bg-slate-900 text-white'
               : 'border-slate-200 text-slate-500 hover:bg-slate-50',
@@ -693,7 +850,8 @@ function SentenceCard({
                   : '清除 A-B 循环'
           }
           className={[
-            'flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] tabular-nums transition-colors',
+            chipBtn,
+            'tabular-nums',
             abActive
               ? 'border-sky-600 bg-sky-600 text-white'
               : clip.abStart !== null
@@ -725,9 +883,7 @@ function SentenceCard({
           <span
             className={[
               'rounded-full px-2 py-0.5 text-[10px] tabular-nums',
-              sentence.mastered
-                ? 'bg-emerald-50 text-emerald-600'
-                : 'bg-amber-50 text-amber-600',
+              sentence.mastered ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600',
             ].join(' ')}
             title={`练过 ${sentence.attempt_count} 次，最佳 ${sentence.best_accuracy}%`}
           >
@@ -736,54 +892,42 @@ function SentenceCard({
         )}
 
         <div className="ml-auto flex items-center gap-1">
-          {canSplit && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onSplitAtPlayhead(playheadMs)}
-              title={`在播放位置（${formatSeconds(playheadMs / 1000)}）拆分`}
-              className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
-            >
-              <ScissorsIcon className="h-3.5 w-3.5" />
-              在此处拆分
-            </button>
-          )}
           <button
             type="button"
-            disabled={busy}
-            onClick={onMergeNext}
-            title="与下一句合并"
-            className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            data-testid="toggle-note"
+            onClick={() => setNoteOpen(!noteOpen)}
+            title="本句笔记"
+            className={[
+              chipBtn,
+              noteOpen
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+            ].join(' ')}
           >
-            <MergeIcon className="h-3.5 w-3.5" />
-            合并下句
+            <NoteIcon className="h-3.5 w-3.5" />
+            笔记
           </button>
           <button
             type="button"
-            disabled={busy || !sentence.text_en}
-            onClick={onRetranslate}
-            title="重新翻译本句"
-            className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
-          >
-            <TranslateIcon className="h-3.5 w-3.5" />
-            重译
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onStartEdit}
-            title="编辑原文 / 翻译"
-            className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            data-testid="toggle-correct"
+            onClick={() => setCorrectOpen(!correctOpen)}
+            title="校对：改原文 / 改时间 / 拆分 / 合并 / 重译"
+            className={[
+              chipBtn,
+              correctOpen
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+            ].join(' ')}
           >
             <PencilIcon className="h-3.5 w-3.5" />
-            编辑
+            校对
           </button>
         </div>
       </div>
 
       {/* 句子级进度条（拖动定位，便于精确设定 A-B 点） */}
       {isActive && clip.duration > 0 && (
-        <div className="mt-2 flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <input
             type="range"
             min={0}
@@ -800,22 +944,20 @@ function SentenceCard({
         </div>
       )}
 
-      {/* 内容区 */}
       {editing ? (
-        <div className="mt-3 space-y-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
           <textarea
             value={draftEn}
             onChange={(e) => setDraftEn(e.target.value)}
-            rows={2}
-            className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-[14px] leading-relaxed text-slate-800 outline-none focus:border-slate-500"
+            className="min-h-0 flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-[15px] leading-relaxed text-slate-800 outline-none focus:border-slate-500"
           />
           <textarea
             value={draftZh}
             onChange={(e) => setDraftZh(e.target.value)}
             rows={2}
-            className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-[13px] leading-relaxed text-slate-600 outline-none focus:border-slate-500"
+            className="shrink-0 resize-none rounded-lg border border-slate-300 px-3 py-2 text-[13px] leading-relaxed text-slate-600 outline-none focus:border-slate-500"
           />
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex shrink-0 items-center justify-end gap-2">
             <button
               type="button"
               onClick={onCancelEdit}
@@ -835,76 +977,139 @@ function SentenceCard({
           </div>
         </div>
       ) : (
-        <div className="mt-3 space-y-3">
-          {/* 听写练习区（FR-S2 / FR-S3） */}
-          <DictationBox
-            sentence={sentence}
-            disabled={!sentence.text_en}
-            autoReveal={autoReveal}
-            onReplay={() => {
-              if (!sentence.clip_url) return
-              clip.seek(0)
-              clip.play(sentence.id, sentence.clip_url)
-            }}
-            onRevealEn={() => setRevealEn((prev) => ({ ...prev, [sentence.id]: true }))}
-            onRecorded={onRecorded}
-          />
-
-          {/* 原文（单词可点击查词，FR-S6） */}
-          <div className="border-t border-slate-100 pt-2">
-            {showEn ? (
+        <>
+          {/* 正文舞台：一句一屏，字号随句长自适应 */}
+          <div className="min-h-0 flex-1 overflow-y-auto" data-testid="sentence-stage">
+            <div className="flex min-h-full flex-col items-center justify-center py-1 text-center">
+              {showEn ? (
               <ClickableText
                 text={sentence.text_en}
                 onWordClick={onWordClick}
+                fontSize={stageFontSize(sentence.text_en.length)}
                 trailing={
                   sentence.is_edited ? (
-                    <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] align-middle text-amber-600">
+                    <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 align-middle text-[10px] text-amber-600">
                       已校对
                     </span>
                   ) : null
                 }
               />
             ) : (
-              <div className="flex h-[26px] items-center rounded bg-slate-50 px-3 text-[12px] text-slate-400">
-                原文已隐藏
+              <div className="my-4 flex items-center gap-2 rounded-lg bg-slate-50 px-4 py-2.5 text-[13px] text-slate-400">
+                <EyeOffIcon className="h-4 w-4" />
+                原文已隐藏 —— 先听，再写下来
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => setRevealEn((prev) => ({ ...prev, [sentence.id]: !showEn }))}
-              className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-slate-800"
-            >
-              {showEn ? <EyeOffIcon className="h-3.5 w-3.5" /> : <EyeIcon className="h-3.5 w-3.5" />}
-              {showEn ? '隐藏原文' : '显示原文'}
-            </button>
+
+            {/* 翻译 */}
+            <div className="mt-3">
+              {showZh ? (
+                <p
+                  className="leading-relaxed text-slate-500"
+                  style={{ fontSize: translationFontSize(sentence.text_zh.length) }}
+                >
+                  {sentence.text_zh || (
+                    <span className="text-amber-600">翻译缺失，可用「校对」重译或手改</span>
+                  )}
+                </p>
+              ) : (
+                <span className="text-[12px] text-slate-300">翻译已隐藏</span>
+              )}
+            </div>
+
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onToggleEn}
+                className="flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-slate-800"
+              >
+                {showEn ? <EyeOffIcon className="h-3.5 w-3.5" /> : <EyeIcon className="h-3.5 w-3.5" />}
+                {showEn ? '隐藏原文' : '显示原文'}
+              </button>
+              <button
+                type="button"
+                onClick={onToggleZh}
+                className="flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-slate-800"
+              >
+                {showZh ? <EyeOffIcon className="h-3.5 w-3.5" /> : <EyeIcon className="h-3.5 w-3.5" />}
+                {showZh ? '隐藏翻译' : '显示翻译'}
+              </button>
+            </div>
+            </div>
           </div>
 
-          {/* 翻译 */}
-          <div>
-            {showZh ? (
-              <p className="text-[13px] leading-relaxed text-slate-600">
-                {sentence.text_zh || (
-                  <span className="text-amber-600">翻译缺失，可点「重译」或手动编辑</span>
-                )}
-              </p>
-            ) : (
-              <div className="flex h-[22px] items-center rounded bg-slate-50 px-3 text-[12px] text-slate-400">
-                翻译已隐藏
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setRevealZh((prev) => ({ ...prev, [sentence.id]: !showZh }))}
-              className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-slate-800"
-            >
-              {showZh ? <EyeOffIcon className="h-3.5 w-3.5" /> : <EyeIcon className="h-3.5 w-3.5" />}
-              {showZh ? '隐藏翻译' : '显示翻译'}
-            </button>
-          </div>
+          {/* 校对面板（低频，默认收起） */}
+          {correctOpen && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
+              <span className="text-[11px] text-slate-400">校对：</span>
+              {canSplit && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onSplitAtPlayhead(playheadMs)}
+                  title={`在播放位置（${formatSeconds(playheadMs / 1000)}）拆分`}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                >
+                  <ScissorsIcon className="h-3.5 w-3.5" />
+                  在 {formatSeconds(playheadMs / 1000)} 拆分
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onMergeNext}
+                title="与下一句合并"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+              >
+                <MergeIcon className="h-3.5 w-3.5" />
+                合并下句
+              </button>
+              <button
+                type="button"
+                disabled={busy || !sentence.text_en}
+                onClick={onRetranslate}
+                title="重新翻译本句"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+              >
+                <TranslateIcon className="h-3.5 w-3.5" />
+                重译
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onStartEdit}
+                title="编辑原文 / 翻译"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+              >
+                <PencilIcon className="h-3.5 w-3.5" />
+                编辑原文
+              </button>
+            </div>
+          )}
 
           {/* 句子笔记（M4 / FR-S8） */}
-          <NoteEditor sentenceId={sentence.id} />
-        </div>
+          {noteOpen && (
+            <div className="shrink-0">
+              <NoteEditor sentenceId={sentence.id} />
+            </div>
+          )}
+
+          {/* 听写练习区（FR-S2 / FR-S3） */}
+          <DictationBox
+            sentence={sentence}
+            disabled={!sentence.text_en}
+            autoReveal={autoReveal}
+            draft={draft}
+            onDraft={onDraft}
+            onReplay={() => {
+              if (!sentence.clip_url) return
+              clip.seek(0)
+              clip.play(sentence.id, sentence.clip_url)
+            }}
+            onRevealEn={onToggleEn}
+            onRecorded={onRecorded}
+          />
+        </>
       )}
     </div>
   )
@@ -916,6 +1121,8 @@ interface DictationBoxProps {
   sentence: SentenceItem
   disabled: boolean
   autoReveal: boolean
+  draft: Draft
+  onDraft: (patch: Partial<Draft>) => void
   onReplay: () => void
   onRevealEn: () => void
   onRecorded: (stat: StatOverride) => void
@@ -925,19 +1132,23 @@ function DictationBox({
   sentence,
   disabled,
   autoReveal,
+  draft,
+  onDraft,
   onReplay,
   onRevealEn,
   onRecorded,
 }: DictationBoxProps) {
   const queryClient = useQueryClient()
-  const [text, setText] = useState('')
-  const [result, setResult] = useState<AttemptResult | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+
+  // 输入内容与校验结果存在父级（按句 id 归档），翻页回来不会丢
+  const text = draft.text
+  const result = draft.result
 
   const submit = useMutation({
     mutationFn: (input: string) => submitAttempt(sentence.id, input),
     onSuccess: (data) => {
-      setResult(data)
+      onDraft({ result: data })
       onRecorded({
         attempt_count: data.attempt_count,
         best_accuracy: data.best_accuracy,
@@ -964,11 +1175,12 @@ function DictationBox({
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+    <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
       <div className="flex items-start gap-2">
         <textarea
+          data-testid="dictation-input"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => onDraft({ text: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
@@ -978,7 +1190,9 @@ function DictationBox({
           rows={2}
           disabled={disabled}
           placeholder={
-            disabled ? '该句没有标准答案，无法听写' : '听音频，写下你听到的内容…（Enter 提交，Shift+Enter 换行）'
+            disabled
+              ? '该句没有标准答案，无法听写'
+              : '听音频，写下你听到的内容…（Enter 提交，Shift+Enter 换行）'
           }
           className="min-h-[46px] flex-1 resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-[14px] leading-relaxed text-slate-800 outline-none transition-colors focus:border-slate-500 disabled:bg-slate-100"
         />
@@ -1006,8 +1220,7 @@ function DictationBox({
               type="button"
               disabled={!text}
               onClick={() => {
-                setText('')
-                setResult(null)
+                onDraft({ text: '', result: null })
                 submit.reset()
               }}
               title="清空输入并收起校验结果"
@@ -1051,9 +1264,7 @@ function DictationBox({
         <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
           {history.isLoading && <p className="px-1 py-1 text-[12px] text-slate-400">加载中…</p>}
           {history.isError && (
-            <p className="px-1 py-1 text-[12px] text-red-500">
-              {(history.error as Error).message}
-            </p>
+            <p className="px-1 py-1 text-[12px] text-red-500">{(history.error as Error).message}</p>
           )}
           {history.data && history.data.items.length === 0 && (
             <p className="px-1 py-1 text-[12px] text-slate-400">还没有听写记录</p>
@@ -1114,10 +1325,12 @@ const WORD_SPLIT = /([A-Za-z][A-Za-z'’-]*)/g
 function ClickableText({
   text,
   onWordClick,
+  fontSize,
   trailing,
 }: {
   text: string
   onWordClick: (word: string, rect: WordRect) => void
+  fontSize: string
   trailing?: React.ReactNode
 }) {
   if (!text) {
@@ -1125,7 +1338,11 @@ function ClickableText({
   }
   const parts = text.split(WORD_SPLIT)
   return (
-    <p className="text-[15px] leading-relaxed text-slate-800">
+    <p
+      data-testid="sentence-text"
+      className="font-medium leading-[1.4] text-slate-800"
+      style={{ fontSize }}
+    >
       {parts.map((part, index) =>
         index % 2 === 1 ? (
           <button

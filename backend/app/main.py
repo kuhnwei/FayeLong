@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.api import (
     attempts,
+    auth as auth_api,
     dict as dict_api,
     health,
     media,
@@ -27,7 +28,8 @@ from app.api import (
 from app.core.config import ensure_dirs, settings, static_dir
 from app.core.logging import setup_logging
 from app.core.tasks import shutdown as shutdown_tasks
-from app.db import init_db
+from app.db import SessionLocal, init_db
+from app.services import auth as auth_service
 from app.services.media import requeue_unfinished
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,52 @@ app.add_middleware(
 )
 
 
+# --------------------------- 全局登录门禁（v1.12）---------------------------
+
+#: 无需登录即可访问的接口：登录相关接口 + 健康检查（给外部拨测/监控用）
+PUBLIC_API_PREFIXES = ("/api/auth/",)
+PUBLIC_API_PATHS = frozenset({"/api/health"})
+
+
+def _is_public_api(path: str) -> bool:
+    return path in PUBLIC_API_PATHS or path.startswith(PUBLIC_API_PREFIXES)
+
+
+def _unauthorized() -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "未登录或登录已过期，请重新登录"},
+    )
+
+
+@app.middleware("http")
+async def guard_api(request: Request, call_next):
+    """除公开接口外，所有 `/api/*` 必须带有效会话。
+
+    为什么用中间件而不是给每个路由加 `Depends`：路由会不断新增，
+    「默认拒绝」才不会因为漏加一个依赖而开出一个洞。
+    前端静态资源不拦 —— 拦截点在接口层，SPA 会自己渲染登录页。
+    """
+    path = request.url.path
+    if request.method == "OPTIONS" or not path.startswith("/api/") or _is_public_api(path):
+        return await call_next(request)
+
+    token = request.cookies.get(auth_service.COOKIE_NAME)
+    if not token:
+        return _unauthorized()
+
+    db = SessionLocal()
+    try:
+        # 只读密钥，避免未登录请求产生写操作
+        secret = auth_service.read_secret(db)
+    finally:
+        db.close()
+
+    if auth_service.verify_token(token, secret) is None:
+        return _unauthorized()
+    return await call_next(request)
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """兜底异常处理：记录完整栈，只向前端返回可读的短消息。
@@ -73,6 +121,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 app.include_router(health.router)
+app.include_router(auth_api.router)
 app.include_router(media.router)
 app.include_router(sentences.router)
 app.include_router(attempts.router)

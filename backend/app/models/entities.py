@@ -120,6 +120,25 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+class User(Base):
+    """站点账号（v1.12 登录门禁）。
+
+    当前是**单账号门禁**：本表通常只有一行 —— 全局共用一份学习数据。
+    不存明文密码，只存 PBKDF2 派生值 + 盐 + 迭代次数（迭代次数落库，
+    将来调高默认值不会让老账号失效）。
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))  # PBKDF2-HMAC-SHA256 十六进制
+    salt: Mapped[str] = mapped_column(String(64))            # 十六进制盐
+    iterations: Mapped[int] = mapped_column(Integer, default=200_000)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Translation(Base):
     """在线翻译结果缓存：同一句不重复请求，节省免费额度。"""
 
