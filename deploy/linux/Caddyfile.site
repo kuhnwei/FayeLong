@@ -1,0 +1,30 @@
+# FayeLong 站点块（Caddy v2 / Ubuntu 24.04）
+# 由 deploy/linux/install.sh 安装为 /etc/caddy/Caddyfile
+# 形态：公网 :80 → 反代本机 127.0.0.1:8000 的 FayeLong（FastAPI 单端口应用）
+#
+# 说明：
+#  - 本应用暂无域名与证书，用纯 HTTP 的 :80 站点；后续接域名时把 `:80`
+#    换成 `fayelong.example.com`，Caddy 会自动签发 HTTPS 并 301。
+#  - 访问日志默认走 journal（`journalctl -u caddy`）。**不要**在此加
+#    `log { output file ... }`：Caddy 以 caddy 用户运行，写自定义日志文件会因
+#    权限（systemd 沙箱）失败，导致 reload 报错、配置不生效。
+
+:80 {
+	# 文本资源压缩（实测：JS 315KB→98KB，CSS 24KB→5KB）
+	encode zstd gzip
+
+	# 前端产物文件名带内容哈希，可长期强缓存
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# 反向代理到后端；SSE（/api/media/{id}/progress）需即时 flush
+	reverse_proxy 127.0.0.1:8000 {
+		flush_interval -1
+	}
+
+	# 安全响应头 / 去指纹
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+	}
+}

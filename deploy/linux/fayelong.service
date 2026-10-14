@@ -1,0 +1,44 @@
+[Unit]
+Description=FayeLong 英语学习网站（FastAPI / uvicorn）
+Documentation=file:/opt/fayelong/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/fayelong/backend
+
+# ---- 运行时环境（只列变量名与用途，值均为非机密）----
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# 单端口反代形态：应用只监听回环，由 Caddy 对公网提供服务
+Environment=FAYELONG_HOST=127.0.0.1
+Environment=FAYELONG_PORT=8000
+# 2 vCPU 机器：后台转码并发压到 1，避免与 ASR 抢核
+Environment=FAYELONG_WORKER_THREADS=1
+# 语音识别默认规格：small（用户决策，准确率优先）
+# 理由：本工具是「听写」用途，转写文本即标准答案，错词会把拼写正确的输入误判为错误。
+# 2 vCPU 实测（同一 34.4s 音频）：small RTF 1.13x / base RTF 0.37x（base 更快但精度略低）。
+# 一键切换（small ⇄ base，模型均已预置）：改本行为目标规格 → daemon-reload + restart，详见 deploy/README.md §5.1
+Environment=FAYELONG_WHISPER_MODEL=small
+Environment=FAYELONG_WHISPER_COMPUTE_TYPE=int8
+Environment=FAYELONG_HF_ENDPOINT=https://hf-mirror.com
+
+# 单 worker：2GB 内存下多 worker 会各自加载一份模型，必然 OOM
+ExecStart=/opt/fayelong/venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 1 \
+    --proxy-headers --forwarded-allow-ips=127.0.0.1
+
+Restart=on-failure
+RestartSec=5
+
+# 内存兜底：软限触发回收，硬限超限杀进程并由 systemd 自动拉起，防整机 OOM
+MemoryHigh=1000M
+MemoryMax=1300M
+
+StandardOutput=append:/var/log/fayelong/service.log
+StandardError=append:/var/log/fayelong/service.err.log
+
+[Install]
+WantedBy=multi-user.target

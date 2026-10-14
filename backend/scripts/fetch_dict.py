@@ -36,7 +36,7 @@ UA = (
 ZIP_NAME = "ecdict-sqlite-28.zip"
 DB_NAME = "ecdict.db"
 META_NAME = "ecdict.meta.json"
-RELEASE_PATH = "skywind3000/ECDICT/releases/download/1.0.28/{zip_name}"
+RELEASE_PATH = f"skywind3000/ECDICT/releases/download/1.0.28/{ZIP_NAME}"
 
 # 下载源：优先官方 GitHub，失败自动换公共加速镜像
 SOURCES = [
