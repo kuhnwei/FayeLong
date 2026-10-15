@@ -66,7 +66,7 @@ export default function DiffResult({ result, compact = false }: Props) {
       </div>
 
       {result.tokens.length > 0 ? (
-        <p className="mt-2 flex flex-wrap gap-x-1.5 gap-y-1.5 text-[15px] leading-relaxed">
+        <p className="mt-2 flex flex-wrap gap-x-1.5 gap-y-1.5 text-[15px] leading-relaxed sm:text-lg">
           {result.tokens.map((token, index) => (
             <span key={`${token.type}-${index}`} className={TOKEN_CLASS[token.type]} title={tokenTitle(token)}>
               {tokenText(token)}

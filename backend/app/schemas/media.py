@@ -51,6 +51,9 @@ class SentenceOut(BaseModel):
     last_input: str = ""
     mastered: bool = False
 
+    # ---- 原文易听错标记（v1.14）：闭区间 [起始词序, 结束词序]，0 基 ----
+    marks: list[list[int]] = Field(default_factory=list)
+
 
 class SentenceListResponse(BaseModel):
     items: list[SentenceOut]
@@ -96,6 +99,8 @@ class SentenceUpdate(BaseModel):
     text_zh: str | None = None
     start_ms: int | None = None
     end_ms: int | None = None
+    # 易听错标记：传了就整体替换（空数组 = 清空）
+    marks: list[list[int]] | None = None
 
 
 class SentenceSplitIn(BaseModel):

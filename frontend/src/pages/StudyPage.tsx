@@ -49,6 +49,7 @@ import {
   CheckIcon,
   EyeIcon,
   EyeOffIcon,
+  HighlightIcon,
   HistoryIcon,
   LoopIcon,
   MergeIcon,
@@ -100,11 +101,11 @@ function stageFontSize(length: number): string {
   return 'clamp(0.95rem, 1.7vw, 1.5rem)'
 }
 
-/** 译文跟随正文但小一档，避免与原文抢视线 */
+/** 译文跟随正文但小一档，避免与原文抢视线（v1.14 整体上调一档） */
 function translationFontSize(length: number): string {
-  if (length <= 30) return 'clamp(0.9rem, 1.5vw, 1.25rem)'
-  if (length <= 60) return 'clamp(0.85rem, 1.3vw, 1.1rem)'
-  return 'clamp(0.8rem, 1.1vw, 1rem)'
+  if (length <= 30) return 'clamp(1.05rem, 1.7vw, 1.5rem)'
+  if (length <= 60) return 'clamp(1rem, 1.5vw, 1.35rem)'
+  return 'clamp(0.95rem, 1.3vw, 1.2rem)'
 }
 
 /** 宫格格子的状态色：当前 > 已掌握 > 练过 > 未听 */
@@ -199,6 +200,14 @@ export default function StudyPage() {
     mutationFn: (sid: number) => retranslateSentence(sid),
     onSuccess: applyDetail,
     onError: (e: Error) => setNotice(`重新翻译失败：${e.message}`),
+  })
+
+  // 原文「易听错」标记（v1.14）：整组覆盖保存，服务端归并区间后回传完整详情
+  const marksMutation = useMutation({
+    mutationFn: (vars: { sid: number; marks: number[][] }) =>
+      updateSentence(vars.sid, { marks: vars.marks }),
+    onSuccess: applyDetail,
+    onError: (e: Error) => setNotice(`标记保存失败：${e.message}`),
   })
 
   const splitMutation = useMutation({
@@ -593,6 +602,9 @@ export default function StudyPage() {
           onRetranslate={() => retranslateMutation.mutate(current.id)}
           onMergeNext={() => mergeMutation.mutate(current.id)}
           onSplitAtPlayhead={(atMs) => splitMutation.mutate({ sid: current.id, atMs })}
+          onSaveMarks={(marks) =>
+            marksMutation.mutateAsync({ sid: current.id, marks }).then(() => undefined)
+          }
           onWordClick={(word, rect) =>
             setWordTarget({
               word,
@@ -635,7 +647,7 @@ export default function StudyPage() {
               type="button"
               disabled={index <= 0}
               onClick={() => goTo(index - 1)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:py-2.5 sm:text-sm"
             >
               ← 上一句
             </button>
@@ -662,7 +674,7 @@ export default function StudyPage() {
               type="button"
               disabled={index >= total - 1}
               onClick={() => goTo(index + 1)}
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="shrink-0 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-6 sm:py-3 sm:text-base"
             >
               下一句 →
             </button>
@@ -721,6 +733,7 @@ interface SentenceStageProps {
   onRetranslate: () => void
   onMergeNext: () => void
   onSplitAtPlayhead: (atMs: number) => void
+  onSaveMarks: (marks: number[][]) => Promise<void>
   onWordClick: (word: string, rect: WordRect) => void
   correctOpen: boolean
   setCorrectOpen: (next: boolean) => void
@@ -748,6 +761,7 @@ function SentenceStage({
   onRetranslate,
   onMergeNext,
   onSplitAtPlayhead,
+  onSaveMarks,
   onWordClick,
   correctOpen,
   setCorrectOpen,
@@ -762,6 +776,65 @@ function SentenceStage({
     setDraftEn(sentence.text_en)
     setDraftZh(sentence.text_zh)
   }, [sentence.text_en, sentence.text_zh, editing])
+
+  // ---- 原文「易听错」标记（v1.14）----
+  const [markMode, setMarkMode] = useState(false)
+  const [markAnchor, setMarkAnchor] = useState<number | null>(null)
+  const [markHover, setMarkHover] = useState<number | null>(null)
+  // 乐观值：点完立刻高亮，不等一个来回；服务端回传的标记一到就丢掉它
+  const [pendingMarks, setPendingMarks] = useState<number[][] | null>(null)
+
+  useEffect(() => {
+    setPendingMarks(null)
+  }, [sentence.marks])
+
+  const marks = pendingMarks ?? sentence.marks ?? []
+  const markedWords = useMemo(() => rangesToWords(marks), [marks])
+  const previewRange =
+    markAnchor !== null && markHover !== null
+      ? ([Math.min(markAnchor, markHover), Math.max(markAnchor, markHover)] as const)
+      : null
+
+  const saveMarks = (next: number[][]) => {
+    setPendingMarks(next)
+    void onSaveMarks(next).catch(() => setPendingMarks(null))
+  }
+
+  /** 区间内要么全被标记（→ 取消），要么整体补上（→ 标记） */
+  const toggleWordRange = (from: number, to: number) => {
+    const lo = Math.min(from, to)
+    const hi = Math.max(from, to)
+    const next = new Set(markedWords)
+    let allMarked = true
+    for (let i = lo; i <= hi; i += 1) {
+      if (!next.has(i)) {
+        allMarked = false
+        break
+      }
+    }
+    for (let i = lo; i <= hi; i += 1) {
+      if (allMarked) next.delete(i)
+      else next.add(i)
+    }
+    saveMarks(wordsToRanges([...next]))
+  }
+
+  // 拖选落点：按下 → 划到哪算到哪 → 松手提交（单击即长度为 1 的区间）
+  useEffect(() => {
+    if (markAnchor === null) return
+    const commit = () => {
+      toggleWordRange(markAnchor, markHover ?? markAnchor)
+      setMarkAnchor(null)
+      setMarkHover(null)
+    }
+    window.addEventListener('pointerup', commit)
+    window.addEventListener('pointercancel', commit)
+    return () => {
+      window.removeEventListener('pointerup', commit)
+      window.removeEventListener('pointercancel', commit)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markAnchor, markHover, markedWords])
 
   const isActive = clip.activeId === sentence.id
   const isPlaying = isActive && clip.playing
@@ -877,6 +950,34 @@ function SentenceStage({
               : `${formatSeconds(clip.abStart)}–${formatSeconds(clip.abEnd)}`}
         </button>
 
+        {/* 标记易听错（v1.14）：点词标记 / 拖选标整段 */}
+        <button
+          type="button"
+          data-testid="toggle-mark"
+          disabled={!sentence.text_en}
+          aria-pressed={markMode}
+          onClick={() => {
+            const next = !markMode
+            setMarkMode(next)
+            setMarkAnchor(null)
+            setMarkHover(null)
+            if (next && !showEn) onToggleEn() // 标记对象是原文，先把原文亮出来
+          }}
+          title="标出原文里自己容易听错的部分：点单词标记/取消，按住从左拖到右可标一整段"
+          className={[
+            chipBtn,
+            'tabular-nums',
+            markMode
+              ? 'border-amber-500 bg-amber-500 text-white'
+              : 'border-slate-200 text-slate-500 hover:bg-slate-50',
+            sentence.text_en ? '' : 'cursor-not-allowed opacity-40',
+          ].join(' ')}
+        >
+          <HighlightIcon className="h-3.5 w-3.5" />
+          {markMode ? '标记中' : '标记难点'}
+          {marks.length > 0 && ` ${marks.length}`}
+        </button>
+
         <span className="text-[11px] tabular-nums text-slate-400">
           {formatSeconds(sentence.start_ms / 1000)} – {formatSeconds(sentence.end_ms / 1000)}
           <span className="ml-1 text-slate-300">({(spanMs / 1000).toFixed(1)}s)</span>
@@ -953,6 +1054,39 @@ function SentenceStage({
         </div>
       )}
 
+      {/* 标记模式提示条（低频，仅开启时出现） */}
+      {markMode && (
+        <div
+          data-testid="mark-hint"
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-700"
+        >
+          <span className="font-medium">标记模式</span>
+          <span>点单词标记/取消 · 按住从左拖到右可标一整段</span>
+          <div className="ml-auto flex items-center gap-2">
+            {markedWords.size > 0 && (
+              <button
+                type="button"
+                onClick={() => saveMarks([])}
+                className="rounded border border-amber-300 bg-white px-2 py-0.5 transition-colors hover:bg-amber-100"
+              >
+                清除全部（{marks.length} 段 / {markedWords.size} 词）
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setMarkMode(false)
+                setMarkAnchor(null)
+                setMarkHover(null)
+              }}
+              className="rounded border border-amber-300 bg-white px-2 py-0.5 transition-colors hover:bg-amber-100"
+            >
+              完成
+            </button>
+          </div>
+        </div>
+      )}
+
       {editing ? (
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           <textarea
@@ -995,6 +1129,16 @@ function SentenceStage({
                 text={sentence.text_en}
                 onWordClick={onWordClick}
                 fontSize={stageFontSize(sentence.text_en.length)}
+                marks={markedWords}
+                markMode={markMode}
+                previewRange={previewRange}
+                onMarkStart={(wordIndex) => {
+                  setMarkAnchor(wordIndex)
+                  setMarkHover(wordIndex)
+                }}
+                onMarkHover={(wordIndex) => {
+                  if (markAnchor !== null) setMarkHover(wordIndex)
+                }}
                 trailing={
                   sentence.is_edited ? (
                     <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 align-middle text-[10px] text-amber-600">
@@ -1014,6 +1158,7 @@ function SentenceStage({
             <div className="mt-3">
               {showZh ? (
                 <p
+                  data-testid="sentence-zh"
                   className="leading-relaxed text-slate-500"
                   style={{ fontSize: translationFontSize(sentence.text_zh.length) }}
                 >
@@ -1196,23 +1341,23 @@ function DictationBox({
               handleSubmit()
             }
           }}
-          rows={2}
+          rows={3}
           disabled={disabled}
           placeholder={
             disabled
               ? '该句没有标准答案，无法听写'
               : '听音频，写下你听到的内容…（Enter 提交，Shift+Enter 换行）'
           }
-          className="min-h-[46px] flex-1 resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-[14px] leading-relaxed text-slate-800 outline-none transition-colors focus:border-slate-500 disabled:bg-slate-100"
+          className="min-h-[88px] flex-1 resize-y rounded-lg border border-slate-300 bg-white px-3 py-3 text-[17px] leading-relaxed text-slate-800 outline-none transition-colors focus:border-slate-500 disabled:bg-slate-100 sm:min-h-[124px] sm:px-4 sm:py-3.5 sm:text-2xl"
         />
         <div className="flex shrink-0 flex-col gap-1.5">
           <button
             type="button"
             disabled={!canSubmit}
             onClick={handleSubmit}
-            className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2.5 text-[13px] text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:text-sm"
           >
-            <SendIcon className="h-3.5 w-3.5" />
+            <SendIcon className="h-4 w-4" />
             {submit.isPending ? '校验中' : '提交'}
           </button>
           <div className="flex gap-1.5">
@@ -1221,7 +1366,7 @@ function DictationBox({
               disabled={!sentence.clip_url}
               onClick={onReplay}
               title="重听本句"
-              className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+              className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
             >
               重听
             </button>
@@ -1233,7 +1378,7 @@ function DictationBox({
                 submit.reset()
               }}
               title="清空输入并收起校验结果"
-              className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+              className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
             >
               清空
             </button>
@@ -1249,7 +1394,10 @@ function DictationBox({
 
       {result && <DiffResult result={result} />}
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+      <div
+        data-testid="dictation-meta"
+        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400"
+      >
         <button
           type="button"
           onClick={() => setShowHistory((v) => !v)}
@@ -1260,12 +1408,7 @@ function DictationBox({
           {sentence.attempt_count > 0 && `（${sentence.attempt_count}）`}
         </button>
         {sentence.last_accuracy !== null && sentence.attempt_count > 0 && (
-          <span>
-            上次 {sentence.last_accuracy}%
-            {sentence.last_input && (
-              <span className="text-slate-400">「{truncate(sentence.last_input, 40)}」</span>
-            )}
-          </span>
+          <span>上次 {sentence.last_accuracy}%</span>
         )}
       </div>
 
@@ -1321,43 +1464,96 @@ function DictationBox({
   )
 }
 
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text
-}
-
 // --------------------------- 可点击原文（M4） ---------------------------
 
 /** 分隔出单词；捕获组让 split 结果里奇数索引为单词本身。 */
 const WORD_SPLIT = /([A-Za-z][A-Za-z'’-]*)/g
 
-/** 把英文原文按单词拆开渲染，单词可点击以唤起查词浮层（FR-S6）。 */
+/** 闭区间列表 → 词下标集合（标记区间左右都算在内） */
+function rangesToWords(ranges: number[][]): Set<number> {
+  const set = new Set<number>()
+  for (const [a, b] of ranges) {
+    for (let i = Math.min(a, b); i <= Math.max(a, b); i += 1) set.add(i)
+  }
+  return set
+}
+
+/** 词下标集合 → 归并后的闭区间（服务端 `services/marks.py` 还会再归并一次兜底） */
+function wordsToRanges(words: number[]): number[][] {
+  const sorted = [...new Set(words)].sort((a, b) => a - b)
+  const out: number[][] = []
+  for (const i of sorted) {
+    const last = out[out.length - 1]
+    if (last && i === last[1] + 1) last[1] = i
+    else out.push([i, i])
+  }
+  return out
+}
+
+/** 把英文原文按单词拆开渲染，单词可点击以唤起查词浮层（FR-S6）。
+ *
+ * 开启标记模式后，单词的点击含义改为「标记/取消易听错」，并支持按住拖选一整段。
+ */
 function ClickableText({
   text,
   onWordClick,
   fontSize,
   trailing,
+  marks,
+  markMode = false,
+  previewRange = null,
+  onMarkStart,
+  onMarkHover,
 }: {
   text: string
   onWordClick: (word: string, rect: WordRect) => void
   fontSize: string
   trailing?: React.ReactNode
+  /** 已标记的词下标 */
+  marks?: Set<number>
+  markMode?: boolean
+  /** 拖选中正在划过的区间（闭区间） */
+  previewRange?: readonly [number, number] | null
+  onMarkStart?: (wordIndex: number) => void
+  onMarkHover?: (wordIndex: number) => void
 }) {
   if (!text) {
     return <p className="text-[15px] leading-relaxed text-slate-400">（空）</p>
   }
   const parts = text.split(WORD_SPLIT)
+  let wordIndex = -1
   return (
     <p
       data-testid="sentence-text"
-      className="font-medium leading-[1.4] text-slate-800"
+      className={['font-medium leading-[1.4] text-slate-800', markMode ? 'select-none' : ''].join(' ')}
       style={{ fontSize }}
     >
-      {parts.map((part, index) =>
-        index % 2 === 1 ? (
+      {parts.map((part, index) => {
+        if (index % 2 !== 1) return <span key={index}>{part}</span>
+
+        wordIndex += 1
+        const wi = wordIndex
+        const isMarked = marks?.has(wi) ?? false
+        const inPreview =
+          previewRange !== null && wi >= previewRange[0] && wi <= previewRange[1]
+
+        return (
           <button
             key={index}
             type="button"
+            data-word-index={wi}
+            data-marked={isMarked ? '1' : undefined}
+            onPointerDown={
+              markMode
+                ? (event) => {
+                    event.preventDefault()
+                    onMarkStart?.(wi)
+                  }
+                : undefined
+            }
+            onPointerEnter={markMode ? () => onMarkHover?.(wi) : undefined}
             onClick={(event) => {
+              if (markMode) return // 标记模式下由 pointerup 统一提交，避免重复切换
               const rect = event.currentTarget.getBoundingClientRect()
               onWordClick(part, {
                 top: rect.top,
@@ -1366,15 +1562,25 @@ function ClickableText({
                 width: rect.width,
               })
             }}
-            title={`查询「${part}」`}
-            className="rounded px-0.5 transition-colors hover:bg-sky-100 hover:text-sky-800 focus:bg-sky-100 focus:outline-none"
+            title={markMode ? '点一下标记 / 取消这个词' : `查询「${part}」`}
+            aria-pressed={markMode ? isMarked : undefined}
+            className={[
+              'rounded px-0.5 transition-colors',
+              markMode
+                ? 'cursor-pointer'
+                : 'hover:bg-sky-100 hover:text-sky-800 focus:bg-sky-100 focus:outline-none',
+              isMarked
+                ? 'bg-amber-100 text-amber-900 underline decoration-amber-400 decoration-wavy decoration-2 underline-offset-4'
+                : markMode
+                  ? 'hover:bg-amber-100'
+                  : '',
+              inPreview && !isMarked ? 'bg-amber-200/70 text-amber-900' : '',
+            ].join(' ')}
           >
             {part}
           </button>
-        ) : (
-          <span key={index}>{part}</span>
-        ),
-      )}
+        )
+      })}
       {trailing}
     </p>
   )

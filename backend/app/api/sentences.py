@@ -29,6 +29,7 @@ from app.schemas.media import (
     SentenceUpdate,
 )
 from app.services import clip as clip_service
+from app.services import marks as marks_service
 from app.services import translate as translate_service
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,11 @@ def update_sentence(
     touched_time = False
 
     if payload.text_en is not None:
-        sentence.text_en = payload.text_en.strip()
+        new_en = payload.text_en.strip()
+        # 原文变了 → 易听错标记的词下标会漂移，直接作废（宁可丢标记也不错位高亮）
+        if new_en != sentence.text_en:
+            sentence.marks = ""
+        sentence.text_en = new_en
         sentence.is_edited = True
     if payload.text_zh is not None:
         sentence.text_zh = payload.text_zh.strip()
@@ -147,6 +152,9 @@ def update_sentence(
     if payload.end_ms is not None and payload.end_ms != sentence.end_ms:
         sentence.end_ms = max(sentence.start_ms + 100, payload.end_ms)
         touched_time = True
+    if payload.marks is not None:
+        # 整体替换；`dump` 内部做归并 + 夹取，越界区间自动丢弃
+        sentence.marks = marks_service.dump(payload.marks, sentence.text_en)
 
     db.commit()
     if touched_time:
@@ -183,6 +191,7 @@ def split_sentence(
     sentence.text_en = left_text
     sentence.is_edited = True
     sentence.text_zh = ""
+    sentence.marks = ""
 
     right = Sentence(
         media_id=media.id,
@@ -243,6 +252,7 @@ def merge_sentence(
     first.text_en = f"{first.text_en.strip()} {second.text_en.strip()}".strip()
     first.text_zh = f"{first.text_zh.strip()} {second.text_zh.strip()}".strip()
     first.is_edited = True
+    first.marks = ""  # 原文拼接后词下标全部作废
 
     # 先删掉被并入句的切片文件
     if second.clip_path:

@@ -40,6 +40,7 @@ from app.schemas.media import (
 )
 from app.schemas.note import MediaNoteItem, MediaNotesResponse
 from app.services import media as media_service
+from app.services import marks as marks_service
 from app.services import study as study_service
 from app.services.study import SentenceStat
 
@@ -100,6 +101,7 @@ def sentence_out(media_id: int, sentence: Sentence, stat: SentenceStat | None = 
             if sentence.clip_path and Path(sentence.clip_path).is_file()
             else None
         ),
+        marks=marks_service.load(sentence.marks),
         **stats,
     )
 

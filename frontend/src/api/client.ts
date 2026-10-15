@@ -156,6 +156,8 @@ export interface SentenceItem {
   last_accuracy: number | null
   last_input: string
   mastered: boolean
+  /** 原文易听错标记（v1.14）：闭区间 [起始词序, 结束词序]，0 基 */
+  marks: number[][]
 }
 
 /** 媒体级听写进度汇总 */
@@ -208,6 +210,8 @@ export interface SentencePatch {
   text_zh?: string
   start_ms?: number
   end_ms?: number
+  /** 易听错标记：传了就整体替换（空数组 = 清空） */
+  marks?: number[][]
 }
 
 // --------------------------- M3：听写 ---------------------------

@@ -50,6 +50,8 @@ class Sentence(Base):
     text_zh: Mapped[str] = mapped_column(Text, default="")
     clip_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 原文「易听错」标记（v1.14）：JSON 数组，元素为闭区间 [起始词序, 结束词序]（0 基）
+    marks: Mapped[str] = mapped_column(Text, default="")
 
     media: Mapped[Media] = relationship(back_populates="sentences")
     note: Mapped["Note | None"] = relationship(
