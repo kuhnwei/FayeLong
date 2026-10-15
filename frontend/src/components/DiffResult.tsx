@@ -7,7 +7,32 @@
  * - `extra`   显示用户多写的词（灰色删除线）
  */
 
-import type { AttemptResult, DiffToken } from '../api/client'
+import type { DiffToken } from '../api/client'
+
+/** DiffResult 真正依赖的字段子集。
+ *
+ * 抽出来的目的：历史记录 `AttemptRecord` 没有 `sentence_id` / `attempt_count`
+ * 等与展示无关的字段，有了这个更小的接口就能直接喂进来，不必在前端伪造数据。
+ * 判定仍只在服务端做 —— 这里的字段全部是服务端算好的结果。
+ */
+export interface DiffResultData {
+  /** 本次正确率（0-100） */
+  accuracy: number
+  /** 是否完全正确 */
+  is_correct: boolean
+  /** 词级对齐结果 */
+  tokens: DiffToken[]
+  /** 标准答案总词数 */
+  total_words: number
+  /** 正确的词数 */
+  correct: number
+  /** 拼错 / 用错的词数 */
+  wrong: number
+  /** 漏掉的词数 */
+  missing: number
+  /** 多写的词数 */
+  extra: number
+}
 
 const TOKEN_CLASS: Record<DiffToken['type'], string> = {
   correct: 'text-slate-800',
@@ -31,7 +56,7 @@ function tokenTitle(token: DiffToken): string {
 }
 
 interface Props {
-  result: AttemptResult
+  result: DiffResultData
   /** 紧凑模式（历史记录里用） */
   compact?: boolean
 }

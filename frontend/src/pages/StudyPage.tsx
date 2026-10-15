@@ -1294,6 +1294,8 @@ function DictationBox({
 }: DictationBoxProps) {
   const queryClient = useQueryClient()
   const [showHistory, setShowHistory] = useState(false)
+  // 历史记录默认折叠；同时只展开一条，避免明细堆叠把面板撑爆
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   // 输入内容与校验结果存在父级（按句 id 归档），翻页回来不会丢
   const text = draft.text
@@ -1319,6 +1321,32 @@ function DictationBox({
     enabled: showHistory,
     staleTime: 0,
   })
+
+  // 高频错误词：遍历已加载的历史记录，统计「反复听错」的词。
+  // 口径：wrong / missing 取 expected，extra 取 actual；先在单条记录内用 Set 去重，
+  // 再跨记录累加（同一次提交里同一个词出现多次只算一次）。
+  const errorWords = useMemo(() => {
+    const items = history.data?.items ?? []
+    const counts = new Map<string, number>()
+    for (const item of items) {
+      const seen = new Set<string>()
+      for (const token of item.tokens) {
+        const word =
+          token.type === 'extra'
+            ? token.actual
+            : token.type === 'wrong' || token.type === 'missing'
+              ? token.expected
+              : null
+        const key = word?.trim()
+        if (key) seen.add(key)
+      }
+      for (const key of seen) counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word))
+      .slice(0, 8)
+  }, [history.data])
 
   const trimmed = text.trim()
   const canSubmit = !disabled && trimmed.length > 0 && !submit.isPending
@@ -1440,24 +1468,76 @@ function DictationBox({
               ))}
             </div>
           )}
-          {history.data?.items.map((item) => (
+          {history.data && errorWords.length > 0 && (
             <div
-              key={item.id}
-              className="flex items-baseline justify-between gap-3 border-b border-slate-50 px-1 py-1 text-[12px] last:border-0"
+              data-testid="dictation-error-words"
+              className="mb-2 flex flex-wrap items-center gap-1.5 px-1"
             >
-              <span className="min-w-0 flex-1 truncate text-slate-600" title={item.input}>
-                {item.input || <span className="text-slate-300">（空）</span>}
-              </span>
-              <span
-                className={`shrink-0 tabular-nums ${item.is_correct ? 'text-emerald-600' : 'text-slate-500'}`}
-              >
-                {item.accuracy}%
-              </span>
-              <span className="shrink-0 text-[11px] text-slate-300">
-                {formatRelative(item.created_at)}
-              </span>
+              <span className="text-[11px] text-slate-400">高频错误词</span>
+              {errorWords.map(({ word, count }) => (
+                <span
+                  key={word}
+                  title={`在最近 ${history.data!.items.length} 次听写中出错 ${count} 次`}
+                  className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-600"
+                >
+                  {word} ×{count}
+                </span>
+              ))}
+              {history.data.total > history.data.items.length && (
+                <span className="text-[11px] text-slate-300">
+                  （基于最近 {history.data.items.length} 次）
+                </span>
+              )}
             </div>
-          ))}
+          )}
+          {history.data?.items.map((item) => {
+            const open = expandedId === item.id
+            return (
+              <div key={item.id} className="border-b border-slate-50 last:border-0">
+                {/* 整行可点击展开/收起；aria-expanded + button 语义保证键盘可达 */}
+                <button
+                  type="button"
+                  data-testid={`dictation-history-item-${item.id}`}
+                  aria-expanded={open}
+                  onClick={() => setExpandedId(open ? null : item.id)}
+                  className="flex min-h-[32px] w-full min-w-0 items-center justify-between gap-3 px-1 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-50"
+                >
+                  <span className="shrink-0 text-slate-400" aria-hidden="true">
+                    {open ? '▾' : '▸'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-slate-600" title={item.input}>
+                    {item.input || <span className="text-slate-300">（空）</span>}
+                  </span>
+                  <span
+                    className={`shrink-0 tabular-nums ${item.is_correct ? 'text-emerald-600' : 'text-slate-500'}`}
+                  >
+                    {item.accuracy}%
+                  </span>
+                  <span className="shrink-0 text-[11px] text-slate-300">
+                    {formatRelative(item.created_at)}
+                  </span>
+                </button>
+                {open && (
+                  <div className="mb-1.5 min-w-0 space-y-1.5 rounded-md bg-slate-50/70 px-2 py-2">
+                    <p className="text-[11px] text-slate-400">
+                      对照基准为当前原文；原文若被校对修改，明细按最新原文重算。
+                    </p>
+                    <div className="min-w-0">
+                      <span className="text-[11px] text-slate-400">当时提交</span>
+                      <p
+                        data-testid={`dictation-history-input-${item.id}`}
+                        className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-700"
+                      >
+                        {item.input || <span className="text-slate-300">（空）</span>}
+                      </p>
+                    </div>
+                    {/* 词级标注复用 DiffResult，不在前端重算 diff */}
+                    <DiffResult result={item} compact />
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

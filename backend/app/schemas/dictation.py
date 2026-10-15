@@ -30,13 +30,27 @@ class AttemptCreate(BaseModel):
 
 
 class AttemptRecord(BaseModel):
-    """一条历史听写记录（不含词级明细，明细由提交时返回）。"""
+    """一条历史听写记录（含词级明细）。
+
+    词级明细（`tokens` 与四类计数）是**读取时按当前原文实时重算的复盘视图**，
+    并不落库（`attempts` 表只追加、不存明细）；而 `accuracy` / `is_correct`
+    取的是**提交当时写入数据库的历史值**，因此若原文后来被校对改过，
+    明细的比对基准是当前原文，成绩仍是历史值，二者可能不一致——这是有意为之。
+    """
 
     id: int
     input: str
     accuracy: float
     is_correct: bool
     created_at: datetime
+
+    # 词级明细（读取时重算，不落库）
+    tokens: list[DiffToken] = Field(default_factory=list)
+    total_words: int = 0
+    correct: int = 0
+    wrong: int = 0
+    missing: int = 0
+    extra: int = 0
 
 
 class AttemptListResponse(BaseModel):

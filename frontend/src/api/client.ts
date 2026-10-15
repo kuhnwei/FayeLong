@@ -1,5 +1,9 @@
 /** 后端 API 封装。开发期由 Vite 代理 /api 到 127.0.0.1:8000。 */
 
+// `DiffResultData` 是 DiffResult 组件真正依赖的字段子集（纯类型导入，编译后会被抹掉）。
+// AttemptResult / AttemptRecord 都具备这些字段，因此都能直接喂进 DiffResult 渲染。
+import type { DiffResultData } from '../components/DiffResult'
+
 const BASE = '/api'
 
 export const MEDIA_STATUS = {
@@ -265,31 +269,42 @@ export interface DiffToken {
   actual: string | null
 }
 
-/** 一次听写的校验结果 + 该句累计统计 */
-export interface AttemptResult {
+/** 一次听写的校验结果 + 该句累计统计。
+ *
+ * 词级明细（tokens / total_words / correct / wrong / missing / extra）与正确率
+ * 由服务端计算（唯一判定源），前端只负责渲染 —— 见 `DiffResultData`。
+ */
+export interface AttemptResult extends DiffResultData {
   sentence_id: number
   attempt_id: number
   input: string
-  accuracy: number
-  is_correct: boolean
-  tokens: DiffToken[]
-  total_words: number
-  correct: number
-  wrong: number
-  missing: number
-  extra: number
   attempt_count: number
   best_accuracy: number
   mastered: boolean
   created_at: string
 }
 
+/** 一条听写历史记录（GET /sentences/{id}/attempts）。 */
 export interface AttemptRecord {
   id: number
   input: string
+  /** 历史正确率快照（不随原文后续校对而变） */
   accuracy: number
+  /** 历史是否完全正确快照 */
   is_correct: boolean
   created_at: string
+  /** 词级对齐结果；按「当前原文」重算（原文被校对改过时明细随之更新） */
+  tokens: DiffToken[]
+  /** 标准答案总词数 */
+  total_words: number
+  /** 正确的词数 */
+  correct: number
+  /** 拼错 / 用错的词数 */
+  wrong: number
+  /** 漏掉的词数 */
+  missing: number
+  /** 多写的词数 */
+  extra: number
 }
 
 // --------------------------- 接口 ---------------------------

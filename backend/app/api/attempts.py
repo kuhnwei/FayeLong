@@ -82,8 +82,15 @@ def list_attempts(
     limit: int = Query(default=20, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> AttemptListResponse:
-    """某句的听写历史（按时间倒序）。"""
-    if db.get(Sentence, sentence_id) is None:
+    """某句的听写历史（按时间倒序），每条记录附带词级明细。
+
+    明细是**读取时按当前原文实时重算的复盘视图**，不落库（`attempts` 表只追加、
+    不存词级明细）。因此比对基准始终是句子当前的标准答案 `text_en`；若原文后来被
+    校对改过，明细会随之变化，但每条记录的 `accuracy` / `is_correct` 仍是**提交当时
+    写入数据库的历史值**（历史成绩是当时的事实，不因改原文而变）。
+    """
+    sentence = db.get(Sentence, sentence_id)
+    if sentence is None:
         raise HTTPException(status_code=404, detail="句子不存在")
 
     total = db.query(Attempt).filter(Attempt.sentence_id == sentence_id).count()
@@ -94,16 +101,26 @@ def list_attempts(
         .limit(limit)
         .all()
     )
-    return AttemptListResponse(
-        items=[
+
+    items: list[AttemptRecord] = []
+    for row in rows:
+        # 以当前原文为基准重算明细；input / text_en 为空时 evaluate 会正常返回
+        # （空 tokens、计数全 0），无需特判。
+        detail = dictation_service.evaluate(sentence.text_en, row.input or "")
+        items.append(
             AttemptRecord(
                 id=row.id,
                 input=row.input,
-                accuracy=round(row.accuracy, 1),
-                is_correct=row.is_correct,
+                accuracy=round(row.accuracy, 1),  # 数据库历史值，不用重算值覆盖
+                is_correct=row.is_correct,        # 同上
                 created_at=row.created_at,
+                tokens=detail["tokens"],
+                total_words=detail["total_words"],
+                correct=detail["correct"],
+                wrong=detail["wrong"],
+                missing=detail["missing"],
+                extra=detail["extra"],
             )
-            for row in rows
-        ],
-        total=total,
-    )
+        )
+
+    return AttemptListResponse(items=items, total=total)
