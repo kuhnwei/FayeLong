@@ -162,19 +162,19 @@ export default function VocabPage() {
       </div>
 
       {isLoading && (
-        <p className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-[13px] text-slate-400">
+        <p className="rounded-xl border border-slate-200 bg-white px-3 py-8 sm:px-5 text-center text-[13px] text-slate-400">
           加载中…
         </p>
       )}
 
       {isError && (
-        <p className="rounded-xl border border-red-100 bg-red-50 px-5 py-8 text-center text-[13px] text-red-600">
+        <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-8 sm:px-5 text-center text-[13px] text-red-600">
           {(error as Error).message}
         </p>
       )}
 
       {!isLoading && !isError && items.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center">
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-12 sm:px-5 text-center">
           <BookIcon className="mx-auto h-8 w-8 text-slate-300" />
           <p className="mt-3 text-[13px] text-slate-400">
             {keyword || filter !== 'all'

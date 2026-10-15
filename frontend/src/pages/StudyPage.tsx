@@ -88,19 +88,23 @@ export interface WordRect {
   width: number
 }
 
-/** 正文自适应字号：句子越短，字越大 —— 一句一屏正是放大字号的时机。 */
+/** 正文自适应字号：句子越短，字越大 —— 一句一屏正是放大字号的时机。
+ *
+ * clamp 的下限按手机宽度定（375px 上 3.4vw 只有 12px，实际会取到下限），
+ * 上限保持桌面观感不变；中间靠 vw 平滑过渡，所以不需要媒体查询。
+ */
 function stageFontSize(length: number): string {
-  if (length <= 45) return 'clamp(1.75rem, 3.4vw, 2.9rem)'
-  if (length <= 90) return 'clamp(1.45rem, 2.8vw, 2.3rem)'
-  if (length <= 150) return 'clamp(1.2rem, 2.1vw, 1.85rem)'
-  return 'clamp(1rem, 1.7vw, 1.5rem)'
+  if (length <= 45) return 'clamp(1.5rem, 3.4vw, 2.9rem)'
+  if (length <= 90) return 'clamp(1.25rem, 2.8vw, 2.3rem)'
+  if (length <= 150) return 'clamp(1.05rem, 2.1vw, 1.85rem)'
+  return 'clamp(0.95rem, 1.7vw, 1.5rem)'
 }
 
 /** 译文跟随正文但小一档，避免与原文抢视线 */
 function translationFontSize(length: number): string {
-  if (length <= 30) return 'clamp(0.95rem, 1.5vw, 1.25rem)'
-  if (length <= 60) return 'clamp(0.9rem, 1.3vw, 1.1rem)'
-  return 'clamp(0.85rem, 1.1vw, 1rem)'
+  if (length <= 30) return 'clamp(0.9rem, 1.5vw, 1.25rem)'
+  if (length <= 60) return 'clamp(0.85rem, 1.3vw, 1.1rem)'
+  return 'clamp(0.8rem, 1.1vw, 1rem)'
 }
 
 /** 宫格格子的状态色：当前 > 已掌握 > 练过 > 未听 */
@@ -117,7 +121,6 @@ export default function StudyPage() {
   const queryClient = useQueryClient()
   const openPlayer = usePlayer((s) => s.open)
   const currentMedia = usePlayer((s) => s.current)
-  const hasPlayer = usePlayer((s) => s.current !== null)
   const clip = useClipPlayer()
   const stopClip = clip.stop
 
@@ -346,14 +349,8 @@ export default function StudyPage() {
     setDrafts((prev) => ({ ...prev, [sid]: { ...(prev[sid] ?? EMPTY_DRAFT), ...patch } }))
   }, [])
 
-  // 整页高度锁在视口内：扣掉顶部条与 main 的内边距（播放条打开时还要多扣一层）
-  const pageHeight = hasPlayer ? 'calc(100vh - 197px)' : 'calc(100vh - 109px)'
-
   return (
-    <div
-      className="flex min-h-[440px] flex-col gap-3 overflow-hidden"
-      style={{ height: pageHeight }}
-    >
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden sm:gap-3">
       {/* 隐藏的句子音频元素 */}
       <audio ref={clip.bind} preload="auto" className="hidden" />
 
@@ -372,8 +369,8 @@ export default function StudyPage() {
       )}
 
       {/* --------------------------- 顶部条 --------------------------- */}
-      <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
-        <div className="flex items-center gap-3">
+      <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-2.5">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link
             to="/"
             title="返回媒体库"
@@ -408,8 +405,12 @@ export default function StudyPage() {
                 {processing && ` ${progress}%`}
               </span>
               {data && <span className="tabular-nums">{formatDuration(data.duration_ms)}</span>}
-              {data && <span>{formatBytes(data.size_bytes)}</span>}
-              {data && <span>{data.type === 'video' ? '视频（仅音轨）' : '音频'}</span>}
+              {data && <span className="hidden sm:inline">{formatBytes(data.size_bytes)}</span>}
+              {data && (
+                <span className="hidden sm:inline">
+                  {data.type === 'video' ? '视频（仅音轨）' : '音频'}
+                </span>
+              )}
               {total > 0 && (
                 <span className="flex items-center gap-1">
                   <TargetIcon className="h-3 w-3" />
@@ -428,26 +429,33 @@ export default function StudyPage() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
             <button
               type="button"
+              data-testid="open-player"
               disabled={!playable}
               onClick={() => data && openPlayer(data, true)}
               className={[
-                'rounded-lg px-2.5 py-1.5 text-xs transition-colors',
+                'rounded-lg px-2 py-1.5 text-[11px] transition-colors sm:px-2.5 sm:text-xs',
                 playable
                   ? 'bg-slate-900 text-white hover:bg-slate-700'
                   : 'cursor-not-allowed bg-slate-100 text-slate-400',
               ].join(' ')}
             >
-              {currentMedia?.id === data?.id ? '整段播放中' : '整段播放'}
+              {/* 窄屏上标题已经要截断了，按钮文案收缩成「播放 / 播放中」 */}
+              <span className="sm:hidden">
+                {currentMedia?.id === data?.id ? '播放中' : '播放'}
+              </span>
+              <span className="hidden sm:inline">
+                {currentMedia?.id === data?.id ? '整段播放中' : '整段播放'}
+              </span>
             </button>
             {total > 0 && (
               <button
                 type="button"
                 onClick={() => setNotesOpen(true)}
                 title="查看本媒体全部句子笔记"
-                className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 sm:px-2.5 sm:text-xs"
               >
                 <NoteIcon className="h-3.5 w-3.5" />
                 笔记{noteCount > 0 ? `（${noteCount}）` : ''}
@@ -458,7 +466,7 @@ export default function StudyPage() {
               onClick={() => setToolsOpen((v) => !v)}
               title="更多操作"
               className={[
-                'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                'rounded-lg border px-2 py-1.5 text-[11px] transition-colors sm:px-2.5 sm:text-xs',
                 toolsOpen
                   ? 'border-slate-900 bg-slate-900 text-white'
                   : 'border-slate-200 text-slate-600 hover:bg-slate-50',
@@ -621,8 +629,8 @@ export default function StudyPage() {
 
       {/* --------------------------- 底部：翻页 + 宫格 --------------------------- */}
       {total > 0 && (
-        <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
-          <div className="flex items-center gap-3">
+        <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-2.5">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               disabled={index <= 0}
@@ -660,10 +668,10 @@ export default function StudyPage() {
             </button>
           </div>
 
-          {/* 句子索引宫格：点击直跳 */}
+          {/* 句子索引宫格：点击直跳。手机上加高格子到 32px 以满足触摸目标 */}
           <div
             data-testid="sentence-grid"
-            className="mt-2 flex max-h-[7.5rem] flex-wrap gap-1 overflow-y-auto"
+            className="mt-2 flex max-h-24 flex-wrap gap-1 overflow-y-auto sm:max-h-[7.5rem]"
           >
             {effective.map((sentence, i) => (
               <button
@@ -677,7 +685,8 @@ export default function StudyPage() {
                     : ' · 还没听写')
                 }
                 className={[
-                  'h-7 min-w-[1.75rem] rounded-md px-1 text-[11px] tabular-nums transition-colors',
+                  // 触摸目标统一 32px：手机和 iPad 都是手指操作，按屏宽分档是错的
+                  'h-8 min-w-[2rem] rounded-md px-1 text-[11px] tabular-nums transition-colors',
                   gridClass(sentence, i === index),
                 ].join(' ')}
               >
@@ -793,7 +802,7 @@ function SentenceStage({
     <div
       data-testid="sentence-stage-card"
       className={[
-        'flex min-h-0 flex-1 flex-col gap-3 rounded-xl border bg-white p-4 transition-colors',
+        'flex min-h-0 flex-1 flex-col gap-2 rounded-xl border bg-white p-3 transition-colors sm:gap-3 sm:p-4',
         highlight ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200',
       ].join(' ')}
     >

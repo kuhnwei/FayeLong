@@ -35,6 +35,12 @@ interface Props {
 const CARD_W = 344
 const MARGIN = 8
 
+/** 卡片宽度：桌面上固定 344px；窄屏（手机）收缩到「视口宽 − 两侧留白」，避免横向溢出。 */
+function cardWidth(): number {
+  if (typeof window === 'undefined') return CARD_W
+  return Math.min(CARD_W, window.innerWidth - MARGIN * 2)
+}
+
 export default function WordPopover({ target, onClose }: Props) {
   const cardRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ top: target.rect.bottom + MARGIN, left: target.rect.left })
@@ -106,7 +112,7 @@ export default function WordPopover({ target, onClose }: Props) {
       <div
         ref={cardRef}
         onMouseDown={(event) => event.stopPropagation()}
-        style={{ top: pos.top, left: pos.left, width: CARD_W }}
+        style={{ top: pos.top, left: pos.left, width: cardWidth() }}
         className="absolute max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
       >
         {/* 头部 */}

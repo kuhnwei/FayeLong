@@ -127,7 +127,7 @@ function StatCard({ label, value, sub }: { label: string; value: number; sub?: s
 /** 列表加载骨架屏（M5：替代干巴巴的「加载中…」） */
 function ListSkeleton() {
   return (
-    <div className="space-y-3 px-5 py-5">
+    <div className="space-y-3 px-3 py-4 sm:px-5 sm:py-5">
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex animate-pulse items-center gap-4">
           <div className="h-9 w-9 shrink-0 rounded-full bg-slate-100" />
@@ -165,7 +165,7 @@ function MediaRow({ media, onPlay, onDelete, onRetry, onRename, busy }: MediaRow
   }
 
   return (
-    <div className="flex items-start gap-4 px-5 py-4">
+    <div className="flex items-start gap-3 px-3 py-4 sm:gap-4 sm:px-5">
       <button
         type="button"
         disabled={!playable}
@@ -418,7 +418,7 @@ export default function MediaLibraryPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-[15px] font-medium text-slate-900">媒体库</h2>
           <p className="mt-1 text-[13px] text-slate-500">
@@ -495,14 +495,22 @@ export default function MediaLibraryPage() {
           if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files)
         }}
         className={[
-          'rounded-xl border border-dashed px-5 py-6 text-center transition-colors',
+          'cursor-pointer rounded-xl border border-dashed px-3 py-5 text-center transition-colors sm:px-5 sm:py-6',
           dragging
             ? 'border-slate-900 bg-slate-50'
             : 'border-slate-300 bg-white hover:border-slate-400',
         ].join(' ')}
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click()
+        }}
+        role="button"
+        tabIndex={0}
       >
         <p className="text-[13px] text-slate-500">
-          把音频 / 视频文件拖到这里，或点右上角「上传文件」
+          {/* 手机上没有拖拽，改成「点一下选文件」；桌面保留原提示 */}
+          <span className="hidden sm:inline">把音频 / 视频文件拖到这里，或点右上角「上传文件」</span>
+          <span className="sm:hidden">点这里选择手机里的音频 / 视频</span>
         </p>
         <p className="mt-1 text-[12px] text-slate-400">
           支持 mp3 / wav / m4a / flac / aac / ogg 与 mp4 / mkv / mov / webm 等（视频仅提取音轨）
@@ -659,7 +667,7 @@ export default function MediaLibraryPage() {
 
       {/* 列表 */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-3 py-3 sm:px-5">
           <h3 className="text-sm font-medium text-slate-900">
             已导入素材
             <span className="ml-2 text-[12px] font-normal text-slate-400">
@@ -700,19 +708,19 @@ export default function MediaLibraryPage() {
 
         {mediaQuery.isLoading && <ListSkeleton />}
         {mediaQuery.isError && (
-          <p className="px-5 py-8 text-center text-[13px] text-red-600">
+          <p className="px-3 py-8 text-center text-[13px] text-red-600 sm:px-5">
             读取失败：{(mediaQuery.error as Error).message}
           </p>
         )}
         {!mediaQuery.isLoading && items.length === 0 && (
-          <div className="px-5 py-12 text-center">
+          <div className="px-3 py-12 text-center sm:px-5">
             <p className="text-[13px] text-slate-400">
               还没有素材。上传一个英语音频，开始你的第一课。
             </p>
           </div>
         )}
         {!mediaQuery.isLoading && items.length > 0 && visible.length === 0 && (
-          <p className="px-5 py-12 text-center text-[13px] text-slate-400">
+          <p className="px-3 py-12 text-center text-[13px] text-slate-400 sm:px-5">
             没有匹配「{keyword}」的素材。
           </p>
         )}
@@ -734,7 +742,7 @@ export default function MediaLibraryPage() {
       </div>
 
       {/* 环境自检 */}
-      <details className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+      <details className="rounded-xl border border-slate-200 bg-white px-3 py-4 sm:px-5">
         <summary className="cursor-pointer text-sm font-medium text-slate-900">
           环境自检
         </summary>

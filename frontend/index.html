@@ -2,7 +2,12 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 移动端适配：viewport-fit=cover 让 iPhone 刘海屏可安全铺满（配合 safe-area 留白）；
+         刻意不写 maximum-scale / user-scalable —— 允许双指缩放是无障碍要求 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="跟着音频做精听与听写的英语学习网站" />
     <title>FayeLong 英语学习</title>
   </head>
   <body>

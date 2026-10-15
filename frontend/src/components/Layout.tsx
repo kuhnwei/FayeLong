@@ -2,17 +2,18 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { changePassword, getAuthStatus, getHealth, logout } from '../api/client'
-import { usePlayer } from '../store/player'
 import PlayerBar from './PlayerBar'
 
+/** 导航项：手机上收紧内边距与字号，桌面上放宽。 */
 const navClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'rounded-lg px-3 py-2 text-sm transition-colors',
+    'shrink-0 rounded-lg px-2 py-1.5 text-[13px] transition-colors sm:px-3 sm:py-2 sm:text-sm',
     isActive
       ? 'bg-slate-900 text-white'
       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
   ].join(' ')
 
+/** 后端状态胶囊。窄屏放不下，md 以下隐藏（信息仍可在媒体库「环境自检」里看到）。 */
 function BackendStatus() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['health'],
@@ -32,7 +33,7 @@ function BackendStatus() {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
+    <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 md:flex">
       <span className={`h-2 w-2 rounded-full ${dot}`} />
       <span className="text-xs text-slate-600">{text}</span>
     </div>
@@ -93,9 +94,9 @@ function AccountMenu() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+        className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 sm:gap-1.5 sm:px-3"
       >
-        <span className="max-w-[10rem] truncate">{data?.username ?? '账号'}</span>
+        <span className="max-w-[6rem] truncate sm:max-w-[10rem]">{data?.username ?? '账号'}</span>
         <span className="text-slate-400">▾</span>
       </button>
 
@@ -178,35 +179,46 @@ function AccountMenu() {
   )
 }
 
+/**
+ * 应用外壳。
+ *
+ * 结构是「固定高度 + 三段 flex」：
+ *   header（shrink-0） / main（flex-1 min-h-0 overflow-y-auto） / PlayerBar（shrink-0）
+ *
+ * 为什么这么做：旧版用 `fixed bottom-0` 的播放条 + 学习页 `calc(100vh - 109px)` 的魔法数字。
+ * 那些数字是按桌面顶栏高度（61px）与 main 内边距（24px）算出来的，手机上顶栏一换行变高就全错。
+ * 改成固定高度的 flex 外壳后，学习页只写 `h-full` 就刚好撑满可用空间，**与顶栏/播放条实际高度无关**。
+ *
+ * 用 `h-dvh` 而不是 `h-screen`：dvh 取动态视口高度，移动端地址栏收起/展开时不会跳动。
+ */
 export default function Layout({ children }: { children: ReactNode }) {
-  const hasPlayer = usePlayer((s) => s.current !== null)
-
   return (
-    <div className="min-h-full">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-6">
-            <h1 className="text-[15px] font-medium text-slate-900">
-              FayeLong 英语学习
-            </h1>
-            <nav className="flex items-center gap-1">
-              <NavLink to="/" className={navClass} end>
-                媒体库
-              </NavLink>
-              <NavLink to="/vocab" className={navClass}>
-                生词本
-              </NavLink>
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
+      <header className="shrink-0 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-3 py-2 sm:gap-4 sm:px-6 sm:py-3">
+          <h1 className="shrink-0 text-[14px] font-medium text-slate-900 sm:text-[15px]">
+            <span className="hidden sm:inline">FayeLong 英语学习</span>
+            <span className="sm:hidden">FayeLong</span>
+          </h1>
+          <nav className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+            <NavLink to="/" className={navClass} end>
+              媒体库
+            </NavLink>
+            <NavLink to="/vocab" className={navClass}>
+              生词本
+            </NavLink>
+          </nav>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <BackendStatus />
             <AccountMenu />
           </div>
         </div>
       </header>
-      <main className={`mx-auto max-w-5xl px-6 py-6 ${hasPlayer ? 'pb-28' : ''}`}>
+
+      <main className="mx-auto min-h-0 w-full max-w-5xl flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-6">
         {children}
       </main>
+
       <PlayerBar />
     </div>
   )

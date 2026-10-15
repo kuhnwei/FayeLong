@@ -35,16 +35,16 @@ export default function NotesPanel({ mediaId, onClose, onJump }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/30 p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/30 p-3 backdrop-blur-sm sm:p-6"
       onClick={onClose}
     >
       <div
-        className="mt-8 flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
+        className="mt-3 flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:mt-8 sm:max-h-[80vh]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="句子笔记汇总"
       >
-        <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3.5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-3 sm:px-5 sm:py-3.5">
           <NoteIcon className="h-4 w-4 text-slate-400" />
           <h3 className="text-[14px] font-medium text-slate-900">句子笔记</h3>
           {data && (
@@ -76,7 +76,7 @@ export default function NotesPanel({ mediaId, onClose, onJump }: Props) {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-5 sm:py-4">
           {isLoading && <p className="py-6 text-center text-[13px] text-slate-400">加载中…</p>}
           {isError && (
             <p className="py-6 text-center text-[13px] text-red-600">
@@ -101,7 +101,7 @@ export default function NotesPanel({ mediaId, onClose, onJump }: Props) {
                   onJump(item.sentence_id)
                   onClose()
                 }}
-                className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+                className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-4"
               >
                 <div className="flex items-center gap-2">
                   <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
@@ -119,7 +119,7 @@ export default function NotesPanel({ mediaId, onClose, onJump }: Props) {
                       {item.mastered ? '已掌握' : `最佳 ${item.best_accuracy}%`}
                     </span>
                   )}
-                  <span className="ml-auto shrink-0 text-[11px] text-slate-300">点击定位 →</span>
+                  <span className="ml-auto hidden shrink-0 text-[11px] text-slate-300 sm:inline">点击定位 →</span>
                 </div>
                 {item.text_en && (
                   <p className="mt-1.5 text-[13px] leading-relaxed text-slate-700">

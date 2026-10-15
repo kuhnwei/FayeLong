@@ -284,7 +284,7 @@ export default function VocabPracticePage() {
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center text-[13px] text-slate-400">
+      <div className="rounded-xl border border-slate-200 bg-white px-3 py-10 sm:px-5 text-center text-[13px] text-slate-400">
         加载生词本…
       </div>
     )
@@ -292,7 +292,7 @@ export default function VocabPracticePage() {
 
   if (isError) {
     return (
-      <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-10 text-center text-[13px] text-red-600">
+      <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-10 sm:px-5 text-center text-[13px] text-red-600">
         {(error as Error).message}
       </div>
     )
@@ -302,7 +302,7 @@ export default function VocabPracticePage() {
     return (
       <div data-practice-phase="empty" className="space-y-4">
         <PageHeader onBack={null} />
-        <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center">
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-12 sm:px-5 text-center">
           <BookIcon className="mx-auto h-8 w-8 text-slate-300" />
           <p className="mt-3 text-[13px] text-slate-500">
             生词本里还没有「带释义」的生词，暂时无法出题。
@@ -540,7 +540,7 @@ export default function VocabPracticePage() {
 
   if (!current) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center text-[13px] text-slate-400">
+      <div className="rounded-xl border border-slate-200 bg-white px-3 py-10 sm:px-5 text-center text-[13px] text-slate-400">
         没有可用题目。
       </div>
     )
@@ -588,7 +588,7 @@ export default function VocabPracticePage() {
               type="button"
               data-practice-play=""
               onClick={() => listen()}
-              className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3.5 text-[14px] text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100"
+              className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[14px] text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100 sm:px-5 sm:py-3.5"
             >
               <SpeakerIcon className="h-5 w-5 text-slate-500" />
               {plays === 0 ? '点击播放发音' : '再听一次'}
