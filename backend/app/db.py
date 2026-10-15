@@ -45,7 +45,18 @@ def get_db() -> Iterator[Session]:
 # 这里按需 ALTER，保证「就地更新」（只换程序不碰 data/）时老库也能直接用。
 _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "sentences": {"marks": "TEXT DEFAULT ''"},
+    # 新增（媒体库分类）：老库就地升级时补列。可空、隐式默认 NULL →
+    # SQLite 允许 `ALTER TABLE ... ADD COLUMN` 带 REFERENCES（启用 FK 时默认值必须为 NULL）。
+    "media": {
+        "category_id": "INTEGER REFERENCES categories(id) ON DELETE SET NULL",
+    },
 }
+
+# 老库只跑 `ALTER ADD COLUMN`，不会自动补索引，需显式幂等建索引。
+# 新库由 `create_all` 建同名索引，`IF NOT EXISTS` 保证两边都不报错。
+_INDEXES: tuple[str, ...] = (
+    "CREATE INDEX IF NOT EXISTS ix_media_category_id ON media(category_id)",
+)
 
 
 def _ensure_columns() -> None:
@@ -59,9 +70,17 @@ def _ensure_columns() -> None:
                     conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
+def _ensure_indexes() -> None:
+    """补齐新增索引（幂等，`IF NOT EXISTS`）。"""
+    with engine.begin() as conn:
+        for statement in _INDEXES:
+            conn.exec_driver_sql(statement)
+
+
 def init_db() -> None:
-    """建表 / 补列（启动时调用）。"""
+    """建表 / 补列 / 补索引（启动时调用）。"""
     from app import models  # noqa: F401  确保模型已注册
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns()
+    _ensure_indexes()

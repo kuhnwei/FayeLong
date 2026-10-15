@@ -198,9 +198,16 @@ async function main() {
       ${HELPERS}
       const out = { statCards: 0, statText: '', rowsBefore: 0, rowsAfter: 0, hasSearch: false, error: null };
       await waitFor(() => document.body.innerText.includes('已导入素材'));
-      // 概览卡片：包含「素材 / 句子 / 生词 / 句子笔记」四个标签
+      // 概览卡片：「素材」按规格 §4.1 采用全局口径文案（如「素材 · 全库」，与 chips 的分类子集计数区分），
+      // 故用**前缀匹配**；「句子 / 生词 / 句子笔记」保持**精确匹配**（「句子」用全等，避免被「句子笔记」顶替）。
       const labels = [...document.querySelectorAll('p')].map((p) => p.textContent.trim());
-      out.statCards = ['素材', '句子', '生词', '句子笔记'].filter((k) => labels.includes(k)).length;
+      const has = (pred) => labels.some(pred);
+      out.statCards = [
+        has((l) => l.startsWith('素材')),
+        has((l) => l === '句子'),
+        has((l) => l === '生词'),
+        has((l) => l === '句子笔记'),
+      ].filter(Boolean).length;
       out.statText = document.body.innerText.replace(/\\n+/g, ' | ').slice(0, 240);
       const input = await waitFor(() => document.querySelector('input[placeholder*="搜索标题"]'));
       out.hasSearch = Boolean(input);

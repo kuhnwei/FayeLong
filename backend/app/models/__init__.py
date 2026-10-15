@@ -2,6 +2,7 @@
 
 from app.models.entities import (
     Attempt,
+    Category,
     Media,
     Note,
     Sentence,
@@ -13,6 +14,7 @@ from app.models.entities import (
 
 __all__ = [
     "Attempt",
+    "Category",
     "Media",
     "Note",
     "Sentence",

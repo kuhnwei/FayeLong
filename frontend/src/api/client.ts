@@ -139,6 +139,8 @@ export interface MediaItem {
   has_audio: boolean
   stream_url: string
   sentence_count: number
+  /** 所属分类；null = 未分类（分类名由前端用 ['categories'] 结果本地映射） */
+  category_id: number | null
 }
 
 export interface SentenceItem {
@@ -177,6 +179,44 @@ export interface MediaDetail extends MediaItem {
 export interface MediaListResponse {
   items: MediaItem[]
   total: number
+}
+
+// --------------------------- 媒体库分类 ---------------------------
+
+/** 一个分类（单层、互斥） */
+export interface CategoryItem {
+  id: number
+  name: string
+  sort_order: number
+  media_count: number
+  created_at: string
+}
+
+/** 分类列表：`items` 只含真实分类，「未分类」的数量单独给（= category_id IS NULL） */
+export interface CategoryListResponse {
+  items: CategoryItem[]
+  total: number
+  uncategorized_count: number
+}
+
+/** 删除分类的返回：released = 被移入「未分类」的素材数（素材本身不会被删除） */
+export interface CategoryDeleteResponse {
+  id: number
+  name: string
+  released: number
+}
+
+/** 批量移动的返回：missing = ids 中不存在（已失效）的媒体 id */
+export interface BatchCategoryResponse {
+  updated: number
+  category_id: number | null
+  missing: number[]
+}
+
+/** 素材可改字段（只传要改的）。category_id 传 null = 移到「未分类」 */
+export interface MediaPatch {
+  title?: string
+  category_id?: number | null
 }
 
 export interface InboxItem {
@@ -256,22 +296,35 @@ export interface AttemptRecord {
 
 export const getHealth = () => request<HealthResponse>('/health')
 
-export const listMedia = () => request<MediaListResponse>('/media')
+/**
+ * 素材列表。
+ * @param categoryId 不传 = 全部；数字 = 该分类；`'none'` = 未分类（服务端字面量 `category_id=none`）
+ */
+export const listMedia = (categoryId?: number | 'none') =>
+  request<MediaListResponse>(
+    categoryId === undefined ? '/media' : `/media?category_id=${categoryId}`,
+  )
 
 export const getMedia = (id: number) => request<MediaDetail>(`/media/${id}`)
 
 export const listInbox = () => request<InboxResponse>('/media/inbox')
 
-export const importFromInbox = (files?: string[]) =>
+/** 从素材目录导入；categoryId 为 null / 不传 = 导入到「未分类」 */
+export const importFromInbox = (files?: string[], categoryId?: number | null) =>
   request<MediaListResponse>('/media/import', {
     method: 'POST',
-    body: JSON.stringify({ files: files ?? null }),
+    body: JSON.stringify({ files: files ?? null, category_id: categoryId ?? null }),
   })
 
-export const updateMedia = (id: number, title: string) =>
+/**
+ * 改素材属性（标题 / 分类）。
+ * 注意：`category_id: null` 会被真的写进请求体 —— 这是「移到未分类」的唯一表达方式，
+ * 不能靠省略字段实现（后端用 `model_fields_set` 区分「未传」与「传了 null」）。
+ */
+export const updateMedia = (id: number, patch: MediaPatch) =>
   request<MediaItem>(`/media/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ title }),
+    body: JSON.stringify(patch),
   })
 
 export const retryMedia = (id: number) =>
@@ -283,6 +336,43 @@ export const retranscribeMedia = (id: number) =>
 
 export const deleteMedia = (id: number) =>
   request<void>(`/media/${id}`, { method: 'DELETE' })
+
+/** 批量移动素材到某分类（categoryId 为 null = 移到「未分类」） */
+export const batchMoveCategory = (ids: number[], categoryId: number | null) =>
+  request<BatchCategoryResponse>('/media/batch-category', {
+    method: 'POST',
+    body: JSON.stringify({ ids, category_id: categoryId }),
+  })
+
+// --------------------------- 媒体库分类 CRUD ---------------------------
+
+/** 分类列表（含每个分类的素材数与未分类数） */
+export const listCategories = () => request<CategoryListResponse>('/categories')
+
+/** 新建分类（同名 409 / 空名或超 32 字 400） */
+export const createCategory = (name: string) =>
+  request<CategoryItem>('/categories', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+
+/** 重命名分类 */
+export const updateCategory = (id: number, name: string) =>
+  request<CategoryItem>(`/categories/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+
+/** 删除分类（旗下素材回落「未分类」，不删素材） */
+export const deleteCategory = (id: number) =>
+  request<CategoryDeleteResponse>(`/categories/${id}`, { method: 'DELETE' })
+
+/** 重排分类：ids 必须是当前全部分类 id 的完整有序集合（服务端按下标重写 sort_order） */
+export const reorderCategories = (ids: number[]) =>
+  request<CategoryListResponse>('/categories/order', {
+    method: 'PATCH',
+    body: JSON.stringify({ ids }),
+  })
 
 // --------------------------- M2：句子编辑 ---------------------------
 
@@ -359,10 +449,14 @@ export function openProgressStream(
   return () => source.close()
 }
 
-/** 上传单个文件（带进度回调）。用 XHR 是因为 fetch 不支持上传进度。 */
+/**
+ * 上传单个文件（带进度回调）。用 XHR 是因为 fetch 不支持上传进度。
+ * @param categoryId 选中分类时把 `category_id` 拼进 FormData；null / 不传 = 归入「未分类」
+ */
 export function uploadMedia(
   file: File,
   onProgress?: (percent: number) => void,
+  categoryId?: number | null,
 ): Promise<MediaItem> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -394,6 +488,11 @@ export function uploadMedia(
     xhr.onabort = () => reject(new Error('上传已取消'))
     const form = new FormData()
     form.append('file', file)
+    // 只在真的选了分类时附加：multipart 里所有值都是字符串，
+    // 传 "null" 会让后端的 int 校验炸掉，所以「未分类」就是不传该字段。
+    if (categoryId !== undefined && categoryId !== null) {
+      form.append('category_id', String(categoryId))
+    }
     xhr.send(form)
   })
 }

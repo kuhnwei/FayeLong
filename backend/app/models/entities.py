@@ -8,6 +8,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+class Category(Base):
+    """媒体库分类（单层，互斥）。
+
+    —— 每个素材至多属于一个分类（`media.category_id`），`NULL` 表示「未分类」。
+    「未分类」**不建真实记录**，一律用 `category_id IS NULL` 表达（见规格 §2.3）。
+    """
+
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Media(Base):
     """导入的音频/视频素材。"""
 
@@ -27,6 +42,10 @@ class Media(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     origin: Mapped[str] = mapped_column(String(16), default="upload")  # upload / inbox
     source_ref: Mapped[str | None] = mapped_column(Text, nullable=True)  # 收件箱来源绝对路径
+    # 所属分类（单层互斥）；NULL = 未分类。删除分类时素材回落未分类（绝不是 CASCADE）。
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     sentences: Mapped[list["Sentence"]] = relationship(

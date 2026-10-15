@@ -1,9 +1,10 @@
 """媒体相关的请求 / 响应模型。"""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from fastapi import HTTPException
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.dictation import DictationSummary
 
@@ -21,6 +22,7 @@ class MediaOut(BaseModel):
     progress: int
     error: str | None = None
     origin: str                    # upload / inbox
+    category_id: int | None = None  # 所属分类；null = 未分类（媒体库分类机制新增字段）
     created_at: datetime
     has_audio: bool                # 转码音频是否已就绪，可就地播放
     stream_url: str
@@ -66,13 +68,47 @@ class MediaDetailOut(MediaOut):
 
 
 class MediaUpdate(BaseModel):
+    """PATCH 单个媒体：仅传需要修改的字段。
+
+    `category_id` 用于归类：显式传 `null` = 移到「未分类」；
+    「未传」与「传 null」由 `model_fields_set` 区分（见 app/api/media.py）。
+    """
+
     title: str | None = None
+    category_id: int | None = None
 
 
 class ImportRequest(BaseModel):
     """从收件箱导入；files 为空表示导入全部未导入的受支持文件。"""
 
     files: list[str] | None = None
+    # 本次导入的素材统一归入该分类；null = 未分类（默认）
+    category_id: int | None = None
+
+
+def _check_ids(value: Any) -> Any:
+    """`mode="before"` 校验：`ids` 必须是非空数组（规格 §3.2b：400 ids 为空/非数组）。
+
+    在字段类型约束之前抛出 400 —— 否则 Pydantic 会把它变成 422，与契约不符。
+    """
+    if not isinstance(value, list):
+        raise HTTPException(status_code=400, detail="ids 必须是非空数组")
+    if not value:
+        raise HTTPException(status_code=400, detail="ids 不能为空")
+    return value
+
+
+class BatchCategoryRequest(BaseModel):
+    """批量把素材移动到某个分类。
+
+    `category_id` **必填**（规格 §3.2b）：显式传 `null` = 移到「未分类」，
+    从而区分「有意移到未分类」与「客户端漏传」。
+    """
+
+    ids: list[int]
+    category_id: int | None
+
+    _check_ids = field_validator("ids", mode="before")(_check_ids)
 
 
 class InboxItem(BaseModel):

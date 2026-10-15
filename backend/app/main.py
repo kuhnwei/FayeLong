@@ -17,6 +17,7 @@ from app import __version__
 from app.api import (
     attempts,
     auth as auth_api,
+    categories,
     dict as dict_api,
     health,
     media,
@@ -123,6 +124,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(health.router)
 app.include_router(auth_api.router)
 app.include_router(media.router)
+app.include_router(categories.router)
 app.include_router(sentences.router)
 app.include_router(attempts.router)
 app.include_router(dict_api.router)

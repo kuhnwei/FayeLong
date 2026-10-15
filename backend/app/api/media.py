@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -25,9 +25,10 @@ from app.core.config import INBOX_DIR, STATUS_PENDING, SUPPORTED_EXT
 from app.core.files import file_response, guess_mime
 from app.core.paths import clips_dir
 from app.db import SessionLocal, get_db
-from app.models import Media, Note, Sentence
+from app.models import Category, Media, Note, Sentence
 from app.schemas.dictation import DictationSummary
 from app.schemas.media import (
+    BatchCategoryRequest,
     ImportRequest,
     InboxItem,
     InboxResponse,
@@ -79,6 +80,7 @@ def serialize(media: Media, sentence_count: int = 0) -> MediaOut:
         progress=media.progress,
         error=media.error,
         origin=media.origin,
+        category_id=media.category_id,
         created_at=media.created_at,
         has_audio=has_audio,
         stream_url=f"/api/media/{media.id}/stream",
@@ -136,6 +138,12 @@ def _get_or_404(db: Session, media_id: int) -> Media:
     return media
 
 
+def _ensure_category(db: Session, category_id: int | None) -> None:
+    """写库前校验目标分类存在（非 null 时）；不存在 → 404。"""
+    if category_id is not None and db.get(Category, category_id) is None:
+        raise HTTPException(status_code=404, detail="分类不存在")
+
+
 def _validate_ext(name: str) -> str:
     ext = Path(name).suffix.lower()
     if ext not in SUPPORTED_EXT:
@@ -147,7 +155,7 @@ def _validate_ext(name: str) -> str:
 
 
 def _register(db: Session, *, title: str, original_name: str, origin: str,
-              source_ref: str | None) -> Media:
+              source_ref: str | None, category_id: int | None = None) -> Media:
     media = Media(
         title=title[:255] or "未命名",
         original_name=original_name[:255],
@@ -157,6 +165,7 @@ def _register(db: Session, *, title: str, original_name: str, origin: str,
         progress=0,
         origin=origin,
         source_ref=source_ref,
+        category_id=category_id,
     )
     db.add(media)
     db.commit()
@@ -170,13 +179,15 @@ def _register(db: Session, *, title: str, original_name: str, origin: str,
 @router.post("", response_model=MediaOut, status_code=201)
 async def upload_media(
     file: UploadFile = File(...),
+    category_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ) -> MediaOut:
-    """上传一个音频 / 视频文件（视频仅取音轨）。"""
+    """上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。"""
     filename = Path(file.filename or "").name
     if not filename:
         raise HTTPException(status_code=400, detail="未获取到文件名")
     ext = _validate_ext(filename)
+    _ensure_category(db, category_id)
 
     media = _register(
         db,
@@ -184,6 +195,7 @@ async def upload_media(
         original_name=filename,
         origin="upload",
         source_ref=None,
+        category_id=category_id,
     )
 
     await _persist_upload(db, media, file, ext)
@@ -230,6 +242,7 @@ def import_from_inbox(
     db: Session = Depends(get_db),
 ) -> MediaListResponse:
     """从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。"""
+    _ensure_category(db, payload.category_id)
     available = {item["path"]: item for item in media_service.scan_inbox(db)}
     if payload.files:
         targets = payload.files
@@ -261,6 +274,7 @@ def import_from_inbox(
             original_name=source.name,
             origin="inbox",
             source_ref=str(source.resolve()),
+            category_id=payload.category_id,
         )
         try:
             destination = media_service.copy_into_library(media.id, source)
@@ -283,12 +297,72 @@ def import_from_inbox(
     return MediaListResponse(items=created, total=len(created))
 
 
+@router.post("/batch-category")
+def batch_set_category(
+    payload: BatchCategoryRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。
+
+    - `ids` 为空 → 400；`category_id` 指向的分类不存在 → 404。
+    - `ids` 中不存在的媒体 id 不报错，收进 `missing` 回报，便于前端提示「N 个已失效」。
+    """
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="ids 不能为空")
+    _ensure_category(db, payload.category_id)
+
+    unique_ids = list(dict.fromkeys(payload.ids))  # 去重但保留顺序
+    existing = {
+        row[0]
+        for row in db.query(Media.id).filter(Media.id.in_(unique_ids)).all()
+    }
+    missing = [mid for mid in unique_ids if mid not in existing]
+
+    updated = 0
+    if existing:
+        updated = (
+            db.query(Media)
+            .filter(Media.id.in_(list(existing)))
+            .update({Media.category_id: payload.category_id}, synchronize_session=False)
+        )
+        db.commit()
+    logger.info(
+        "批量归类：updated=%d, category_id=%s, missing=%d",
+        updated, payload.category_id, len(missing),
+    )
+    return {"updated": updated, "category_id": payload.category_id, "missing": missing}
+
+
 # --------------------------- 列表 / 详情 ---------------------------
 
 
 @router.get("", response_model=MediaListResponse)
-def list_media(db: Session = Depends(get_db)) -> MediaListResponse:
-    rows = db.query(Media).order_by(Media.id.desc()).all()
+def list_media(
+    category_id: str | None = None,
+    db: Session = Depends(get_db),
+) -> MediaListResponse:
+    """素材列表。可选 `category_id` 过滤：
+
+    - 缺省 → 不加条件（保持既有「全部」行为，契约兼容）
+    - 字面量 `none` → 只看「未分类」（`category_id IS NULL`）
+    - 整数串 → 只看该分类
+    - 其他非法值 → 400
+    """
+    query = db.query(Media)
+    if category_id is not None:
+        if category_id == "none":
+            query = query.filter(Media.category_id.is_(None))
+        else:
+            try:
+                target = int(category_id)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400,
+                    detail="category_id 需为整数，或字面量 none（未分类）",
+                ) from None
+            query = query.filter(Media.category_id == target)
+
+    rows = query.order_by(Media.id.desc()).all()
     counts = dict(
         db.query(Sentence.media_id, func.count(Sentence.id))
         .group_by(Sentence.media_id)
@@ -315,6 +389,10 @@ def update_media(
         title = payload.title.strip()
         if title:
             media.title = title[:255]
+    # 区分「未传」与「传了 null」：null 表示移到「未分类」（Pydantic v2）
+    if "category_id" in payload.model_fields_set:
+        _ensure_category(db, payload.category_id)
+        media.category_id = payload.category_id
     db.commit()
     db.refresh(media)
     return serialize(media)

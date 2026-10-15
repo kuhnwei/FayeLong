@@ -430,3 +430,36 @@ export function HighlightIcon({ className = size }: IconProps) {
     </svg>
   )
 }
+
+// --------------------------- 媒体库分类 ---------------------------
+
+/** 分类（标签） */
+export function TagIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 2.8 12V4.8a2 2 0 0 1 2-2H12a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.8Z" />
+      <path d="M7.5 7.5h.01" />
+    </svg>
+  )
+}
+
+/** 上移一位 */
+export function ChevronUpIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6 15l6-6 6 6" />
+    </svg>
+  )
+}
+
+/** 下移一位 */
+export function ChevronDownIcon({ className = size }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  )
+}
