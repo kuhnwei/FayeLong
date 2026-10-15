@@ -379,7 +379,13 @@ export default function StudyPage() {
 
       {/* --------------------------- 顶部条 --------------------------- */}
       <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-2.5">
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/*
+          窄屏允许换行：右侧按钮组（播放 / 笔记 / 工具）是 shrink-0，单行时会把
+          中间栏压到 ~90px —— 标题被截断，下面那行「已听写 / 已掌握 / 平均最佳」
+          还会被压成竖排单字。手机上让按钮组独占一行（见下方 w-full sm:w-auto），
+          中间栏就能拿回整宽。
+        */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Link
             to="/"
             title="返回媒体库"
@@ -421,24 +427,34 @@ export default function StudyPage() {
                 </span>
               )}
               {total > 0 && (
-                <span className="flex items-center gap-1">
-                  <TargetIcon className="h-3 w-3" />
-                  已听写
-                  <span className="tabular-nums text-slate-600">
-                    {summary.attempted}/{summary.total}
+                // 这一组是「图标 + 三段文字」。**绝不能**做成不换行的 flex ——
+                // 里面的裸文本会各自成为 flex item，被压到 min-content（= 一个汉字宽），
+                // 于是「已听写」竖排成三行单字。现在每段 whitespace-nowrap 保持完整，
+                // 整组按「段」换行，最窄也只会掉到下一行，不会拆字。
+                <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <span className="flex items-center gap-1 whitespace-nowrap">
+                    <TargetIcon className="h-3 w-3 shrink-0" />
+                    已听写
+                    <span className="tabular-nums text-slate-600">
+                      {summary.attempted}/{summary.total}
+                    </span>
                   </span>
-                  · 已掌握 <span className="tabular-nums text-emerald-600">{summary.mastered}</span>
+                  <span className="whitespace-nowrap">
+                    · 已掌握 <span className="tabular-nums text-emerald-600">{summary.mastered}</span>
+                  </span>
                   {summary.attempted > 0 && (
-                    <>
+                    <span className="whitespace-nowrap">
                       · 平均最佳 <span className="tabular-nums text-slate-600">{summary.avg}%</span>
-                    </>
+                    </span>
                   )}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+          {/* 手机（<sm）上 w-full 让它换到第二行并右对齐，把第一行整宽让给标题；
+              sm 起恢复 w-auto，回到原来的单行布局 */}
+          <div className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto sm:gap-1.5">
             <button
               type="button"
               data-testid="open-player"

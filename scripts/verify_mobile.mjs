@@ -17,6 +17,7 @@
  *   5. 学习页：宫格格子与翻页按钮的触摸目标 ≥ 32px
  *   6. 学习页：正文字号落在合理区间（14–50px），没有小到看不清也没大到溢出
  *   7. 整段播放条：不溢出、控件都在
+ *   8. 学习页：顶部信息条（已听写 / 已掌握 / 平均最佳）没被压成竖排单字
  *
  * 依赖：本机 Chrome + 已启动的后端 + Node 22。
  * 用法（项目根目录）：
@@ -288,6 +289,38 @@ async function main() {
         `${vp.name} 学习页无纵向滚动条`,
         scroll.scrollH <= scroll.inner + 2,
         `文档 ${scroll.scrollH}px / 视口 ${scroll.inner}px`,
+      )
+
+      // 顶部信息条不能被挤成竖排单字。
+      // 那一组是「已听写 / 已掌握 / 平均最佳」，每段都显式 whitespace-nowrap，
+      // 正常情况下每段只占 1 行。早先它写成了 `flex`（nowrap）且文字是裸文本，
+      // 文字各自成为 flex item、被压到 min-content（= 1 个汉字宽），
+      // 「已听写」竖排成 3 行、「· 平均最佳」5 行 —— 桌面端完全看不出来，
+      // 只有按「行数」量才量得出来。
+      const metaRuns = await cdp.evaluate(`(() => {
+        const group = [...document.querySelectorAll('span')].find(
+          (s) => s.textContent.includes('已听写') && getComputedStyle(s).display === 'flex',
+        );
+        if (!group) return null;
+        const walker = document.createTreeWalker(group, NodeFilter.SHOW_TEXT);
+        const runs = [];
+        let node;
+        while ((node = walker.nextNode())) {
+          const text = node.textContent.trim();
+          if (!text) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          runs.push({ text: text.slice(0, 8), lines: range.getClientRects().length });
+        }
+        return { runs, h: Math.round(group.getBoundingClientRect().height) };
+      })()`)
+      const worstRun = metaRuns?.runs?.length ? Math.max(...metaRuns.runs.map((r) => r.lines)) : 0
+      record(
+        `${vp.name} 顶部信息条未被压成竖排单字`,
+        Boolean(metaRuns?.runs?.length) && worstRun === 1,
+        metaRuns?.runs?.length
+          ? metaRuns.runs.map((r) => `${r.text}:${r.lines}行`).join(' / ')
+          : '找不到「已听写」信息组',
       )
 
       // 关键：小屏上最容易坏的就是「听写框 / 翻页按钮被挤出视口」
