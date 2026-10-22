@@ -7,6 +7,8 @@
 
 from contextlib import asynccontextmanager
 import logging
+import threading
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +24,7 @@ from app.api import (
     health,
     media,
     notes,
+    question_types as question_types_api,
     sentences,
     stats,
     vocab,
@@ -31,9 +34,113 @@ from app.core.logging import setup_logging
 from app.core.tasks import shutdown as shutdown_tasks
 from app.db import SessionLocal, init_db
 from app.services import auth as auth_service
+from app.services import jobs as jobs_service
 from app.services.media import requeue_unfinished
 
 logger = logging.getLogger(__name__)
+
+#: web 进程内降级 worker 的小池容量。
+#: 刻意小于独立 worker（`job_cpu_threads` / `job_io_threads`）：它只是「独立 worker
+#: 没起来」时的安全网，不该和真正的 worker 抢核（DD-001 §1 决策 1）。
+_INPROC_CPU_THREADS = 1
+_INPROC_IO_THREADS = 2
+
+#: `auto` 模式的观察窗口：等这么久还没有在线 worker 才接管。
+_INPROC_AUTO_DELAY_SEC = 5.0
+
+#: 进程内降级 worker（`None` = 没起）。
+_inproc_worker: Any = None
+#: `auto` 模式的延时器（退出时必须取消，否则 lifespan 结束后还会起线程）。
+_inproc_timer: threading.Timer | None = None
+
+
+def _has_online_worker() -> bool:
+    """`workers` 表里是否有在线的心跳行（`auto` 模式的判定依据）。"""
+    db = SessionLocal()
+    try:
+        return bool(jobs_service.online_workers(db))
+    finally:
+        db.close()
+
+
+def _start_inproc_worker() -> None:
+    """在 web 进程内起一个降级 worker（小池，`mode="web-inproc"`）。"""
+    global _inproc_worker
+    if _inproc_worker is not None:
+        return
+    # 延迟导入：`app.worker` 会连带 import 各 stage 模块，放在模块顶层会让
+    # 「只跑 API」的进程也背上这些依赖（虽然它们本来就是必需的，但延迟导入能让
+    # `python -c "import app.main"` 的失败面更小，排错更快）。
+    from app.worker import Worker
+
+    _inproc_worker = Worker(
+        cpu_threads=_INPROC_CPU_THREADS,
+        io_threads=_INPROC_IO_THREADS,
+        mode="web-inproc",
+        recover=False,      # 恢复扫描交给独立 worker；web 内降级不抢这份职责
+    )
+    _inproc_worker.start()
+    logger.warning(
+        "web 进程已降级为进程内执行者（cpu=%d io=%d）；"
+        "独立 worker 上线后重启 web 即可让位",
+        _INPROC_CPU_THREADS,
+        _INPROC_IO_THREADS,
+    )
+
+
+def maybe_start_inproc_worker() -> None:
+    """按 `FAYELONG_WEB_INPROC_WORKER` 三态决定是否在本进程执行任务。
+
+    * `off`：什么都不做（云端 / 已部署独立 worker）；
+    * `on`：无条件起（整体退回「单进程全干」的旧行为，也是回滚开关）；
+    * `auto`：延迟 :data:`_INPROC_AUTO_DELAY_SEC` 秒后再判一次 `workers` 表，
+      仍无在线 worker 才起 —— 这样「独立 worker 已经起来了」时不会白占线程。
+    """
+    global _inproc_timer
+    mode = str(settings.web_inproc_worker or "").strip().lower()
+    if mode not in ("off", "auto", "on"):
+        logger.warning("未知的 FAYELONG_WEB_INPROC_WORKER=%r，按 auto 处理", mode)
+        mode = "auto"
+
+    if mode == "off":
+        logger.info("web 进程不执行任务（FAYELONG_WEB_INPROC_WORKER=off）")
+        return
+    if mode == "on":
+        _start_inproc_worker()
+        return
+
+    def _deferred() -> None:
+        if _inproc_worker is not None:
+            return
+        try:
+            if _has_online_worker():
+                logger.info("检测到在线 worker，web 进程不做进程内执行")
+                return
+        except Exception:  # noqa: BLE001  数据库抖动不应让 web 起不来
+            logger.warning("检查在线 worker 失败，按「无 worker」处理", exc_info=True)
+        logger.warning(
+            "未检测到独立 worker 进程，web 进程降级为进程内执行"
+            "（FAYELONG_WEB_INPROC_WORKER=auto）"
+        )
+        _start_inproc_worker()
+
+    _inproc_timer = threading.Timer(_INPROC_AUTO_DELAY_SEC, _deferred)
+    _inproc_timer.daemon = True
+    _inproc_timer.start()
+
+
+def stop_inproc_worker() -> None:
+    """停掉进程内降级 worker（幂等；lifespan 退出时调用）。"""
+    global _inproc_worker, _inproc_timer
+    if _inproc_timer is not None:
+        _inproc_timer.cancel()
+        _inproc_timer = None
+    if _inproc_worker is not None:
+        try:
+            _inproc_worker.stop()
+        except Exception:  # noqa: BLE001  退出路径不应抛异常
+            logger.warning("停止进程内 worker 时出错", exc_info=True)
+        _inproc_worker = None
 
 
 @asynccontextmanager
@@ -42,7 +149,9 @@ async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
     requeue_unfinished()  # 重启后自动续做未完成的媒体任务
+    maybe_start_inproc_worker()  # auto/on 时降级为进程内执行者
     yield
+    stop_inproc_worker()
     shutdown_tasks()
 
 
@@ -123,6 +232,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 app.include_router(health.router)
 app.include_router(auth_api.router)
+app.include_router(question_types_api.router)
 app.include_router(media.router)
 app.include_router(categories.router)
 app.include_router(sentences.router)

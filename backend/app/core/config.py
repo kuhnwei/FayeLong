@@ -135,7 +135,37 @@ class Settings(BaseSettings):
     ffmpeg_threads: int = 0              # 0 = 让 ffmpeg 自行决定
 
     # 后台任务并发（转码线程数，避免吃满 CPU）
+    #: ⚠️ deprecated：P3-2 起**不再被任何代码读取**（调度权已交给 `jobs` + 独立
+    #: worker）。保留字段只为兼容仍设置它的旧部署脚本（云端 unit 曾设 1）。
+    #: 容量决策改看 `job_cpu_threads` / `job_io_threads`。
     worker_threads: int = 2
+
+    # ---------------- P3-2 调度（DD-001 §5.4）----------------
+    # CPU 池线程数：0 = 自动（max(1, os.cpu_count() or 1)）。
+    # 云端 2 vCPU 必须显式设 1 —— 否则会取 2，与 ASR 抢核（见 deploy/linux/*.service）。
+    job_cpu_threads: int = 0
+    # IO 池线程数：翻译/未来批改。免费引擎按 IP 限流，4 已是上限，不要调大。
+    job_io_threads: int = 4
+    # 池循环轮询间隔（有活时）
+    job_poll_interval_ms: int = 500
+    # 空闲退避上限
+    job_idle_max_ms: int = 2000
+    # worker 级心跳间隔（一次 UPDATE，可忽略）
+    job_heartbeat_interval_sec: int = 10
+    # worker 判死阈值（3× 间隔，容忍一次 GC/调度抖动）
+    job_worker_ttl_sec: int = 30
+    # job 租约续期间隔（ticker 一条 UPDATE 续本进程所有 running job）
+    job_lease_interval_sec: int = 20
+    # job 判僵死阈值（6× 间隔，给长时间 ASR 留足余量）
+    job_lease_ttl_sec: int = 120
+    # 尝试上限（claim 即 +1，故最多被尝试 3 次，可防「反复把 worker 搞 OOM」的
+    # 无限重启循环）
+    job_max_attempts: int = 3
+    # web 进程是否执行任务：off / auto / on（小写三值，见 DD-001 §1 决策 1）
+    #   off  = 云端 / 明确部署了独立 worker 时
+    #   auto = 开发与打包交付包（安全网：worker 不在线时 web 5s 后接管）
+    #   on   = 整体退回「单进程全干」的旧行为（回滚开关）
+    web_inproc_worker: str = "auto"
 
     cors_origins: list[str] = [
         "http://localhost:5173",

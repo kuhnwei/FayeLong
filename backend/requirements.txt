@@ -3,3 +3,6 @@ uvicorn[standard]>=0.32.0
 sqlalchemy>=2.0.36
 pydantic-settings>=2.6.0
 python-multipart>=0.0.12
+# 数据库迁移（P3-1 引入）。基线见 backend/migrations/versions/0001_baseline.py；
+# 目标库默认 data/app.db，可用 `-x db_path=<副本路径>` 覆盖。
+alembic>=1.20.0

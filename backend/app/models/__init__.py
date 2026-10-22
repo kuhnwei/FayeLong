@@ -3,6 +3,7 @@
 from app.models.entities import (
     Attempt,
     Category,
+    Job,
     Media,
     Note,
     Sentence,
@@ -10,11 +11,13 @@ from app.models.entities import (
     Translation,
     User,
     Vocab,
+    Worker,
 )
 
 __all__ = [
     "Attempt",
     "Category",
+    "Job",
     "Media",
     "Note",
     "Sentence",
@@ -22,4 +25,5 @@ __all__ = [
     "Translation",
     "User",
     "Vocab",
+    "Worker",
 ]
