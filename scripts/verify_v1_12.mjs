@@ -168,10 +168,12 @@ const HELPERS = `
     const m = document.body.innerText.match(/第\\s*(\\d+)\\s*\\/\\s*(\\d+)\\s*句/);
     return m ? Number(m[1]) : null;
   };
-  /** 宫格按钮：底部一排数字（长度 1~3、纯数字文本） */
+  /** 宫格按钮：底部一排数字（长度 1~3、纯数字文本）；语义锚点优先 data-grid-cell，兜底旧圆角类名 */
   const gridButtons = () =>
     [...document.querySelectorAll('button')].filter(
-      (b) => /^\\d{1,3}$/.test(b.textContent.trim()) && b.className.includes('rounded-md'),
+      (b) =>
+        /^\\d{1,3}$/.test(b.textContent.trim()) &&
+        (b.hasAttribute('data-grid-cell') || b.className.includes('rounded-md')),
     );
   const arrow = (key, target) => {
     const el = target || window;

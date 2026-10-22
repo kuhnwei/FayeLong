@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { installSessionInBrowser } from './lib/session.mjs'
 
 const argv = process.argv.slice(2)
 const arg = (name, fallback) => {
@@ -142,6 +143,10 @@ async function main() {
     cdp = await CDP.connect(page.webSocketDebuggerUrl)
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
+    // v1.12 起站点有登录门禁（未登录整屏是 `<LoginPage/>`，没有 header/main/footer），
+    // 本脚本是唯一没注入会话的老脚本 → 会全程停在登录页、断言全红。
+    // 这里补上项目其他 5 个 verify（m4/m5/marks/attempt_history/vocab_practice/mobile）同款做法。
+    await installSessionInBrowser(cdp, BASE)
     // 收集页面脚本错误（每次导航前注入）
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
       source:
@@ -217,14 +222,20 @@ async function main() {
       `header.top=${shell.headerTop} footer.bottom=${shell.footerBottom} innerH=${shell.innerH}`,
     )
 
-    // 导航高亮：/ 应该高亮「媒体库」（bg-slate-900）
+    // 导航高亮：/ 应该高亮「媒体库」
+    // 语义锚点优先 data-active="true"（ARCH §3.2），兜底旧配色类名 bg-slate-900。
     const navHome = await cdp.evaluate(`(() => {
       const links = [...document.querySelectorAll('header nav a')];
-      return links.map((a) => ({ text: a.textContent.trim(), active: a.classList.contains('bg-slate-900') }));
+      return links.map((a) => ({
+        text: a.textContent.trim(),
+        active: (a.dataset && a.dataset.active === 'true') || a.classList.contains('bg-slate-900'),
+      }));
     })()`)
+    // 按文本定位，不做条数硬校验（导航项会从 2 项增到 3/4 项，条数不是业务语义）
     record(
       '/ 高亮「媒体库」',
-      navHome.length === 2 && navHome[0].text === '媒体库' && navHome[0].active && !navHome[1].active,
+      navHome.some((n) => n.text.includes('媒体库') && n.active) &&
+        navHome.every((n) => n.text.includes('媒体库') || !n.active),
       JSON.stringify(navHome),
     )
 
@@ -261,15 +272,19 @@ async function main() {
       `path=${fallback.path} h2="${fallback.title.trim()}"`,
     )
 
-    // /vocab 应高亮「生词本」
+    // /vocab 应高亮「生词本」（按文本定位 + 语义锚点，兜底旧配色类名）
     await goto(cdp, '/vocab', 700)
     const navVocab = await cdp.evaluate(`(() => {
       const links = [...document.querySelectorAll('header nav a')];
-      return links.map((a) => ({ text: a.textContent.trim(), active: a.classList.contains('bg-slate-900') }));
+      return links.map((a) => ({
+        text: a.textContent.trim(),
+        active: (a.dataset && a.dataset.active === 'true') || a.classList.contains('bg-slate-900'),
+      }));
     })()`)
     record(
       '/vocab 高亮「生词本」',
-      navVocab[1] && navVocab[1].active && !navVocab[0].active,
+      navVocab.some((n) => n.text.includes('生词本') && n.active) &&
+        navVocab.every((n) => n.text.includes('生词本') || !n.active),
       JSON.stringify(navVocab),
     )
 

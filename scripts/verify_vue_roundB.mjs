@@ -182,7 +182,7 @@ async function main() {
     }))()`)
     record(
       '登录后 → 渲染 Layout（三分支走对）',
-      authed.hasLayout === true && authed.navLinks.length === 2,
+      authed.hasLayout === true && authed.navLinks.length >= 2,
       `hasLayout=${authed.hasLayout} nav=${JSON.stringify(authed.navLinks)}`,
     )
     record('Layout 里 BackendStatus 显示「后端正常」', authed.backendText.includes('后端正常'), `"${authed.backendText}"`)

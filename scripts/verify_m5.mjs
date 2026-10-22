@@ -270,7 +270,10 @@ async function main() {
         await sleep(300);
         const b2 = document.querySelector('button[title^="清除 A-B 循环"]');
         out.step2 = b2 ? b2.getAttribute('title') : null;
-        out.abActive = b2 ? /sky/.test(b2.className) : false;
+        // 语义锚点优先 data-state="ab-active"；兜底仍认旧配色类名 sky
+        out.abActive = b2
+          ? (b2.dataset && b2.dataset.state) === 'ab-active' || /sky/.test(b2.className || '')
+          : false;
         if (b2) {
           b2.click();
           await sleep(250);
@@ -380,12 +383,24 @@ async function main() {
     const grid = await cdp.evaluate(`(() => { ${HELPERS}
       const gridEl = document.querySelector('[data-testid="sentence-grid"]');
       const cells = gridEl ? [...gridEl.querySelectorAll('button')] : [];
+      // 语义锚点优先：data-state（ARCH §3.2 gridState）；
+      // 兼容兜底：换皮前页面只有旧颜色类名，缺失 data-state 时回落原类名判断。
+      const stateOf = (b) => {
+        const ds = b.dataset ? b.dataset.state : '';
+        if (ds) return ds;
+        const c = b.className || '';
+        if (c.includes('bg-slate-900')) return 'active';
+        if (c.includes('bg-emerald-100')) return 'mastered';
+        if (c.includes('bg-amber-100')) return 'attempted';
+        if (c.includes('bg-slate-100')) return 'fresh';
+        return '';
+      };
       return {
         total: cells.length,
-        active: cells.filter((b) => b.className.includes('bg-slate-900')).length,
-        mastered: cells.filter((b) => b.className.includes('bg-emerald-100')).length,
-        attempted: cells.filter((b) => b.className.includes('bg-amber-100')).length,
-        fresh: cells.filter((b) => b.className.includes('bg-slate-100')).length,
+        active: cells.filter((b) => stateOf(b) === 'active').length,
+        mastered: cells.filter((b) => stateOf(b) === 'mastered').length,
+        attempted: cells.filter((b) => stateOf(b) === 'attempted').length,
+        fresh: cells.filter((b) => stateOf(b) === 'fresh').length,
       };
     })()`)
     const distinctStates = [grid?.mastered, grid?.attempted, grid?.fresh].filter((n) => n > 0).length
@@ -422,9 +437,14 @@ async function main() {
         item.click();
         await sleep(500);
         out.jumped = !document.querySelector('div[role="dialog"]');
-        // v1.12 一句一页：目标句不再有固定 id，改看句子舞台是否被高亮环包住
+        // v1.12 一句一页：目标句不再有固定 id，改看句子舞台是否被高亮环包住。
+        // 语义锚点优先 data-highlight="true"（ARCH §3.2），兜底旧类名 ring-2。
         const card = document.querySelector('[data-testid="sentence-stage-card"]');
-        out.highlighted = Boolean(card && card.className.includes('ring-2'));
+        out.highlighted = Boolean(
+          card &&
+            ((card.dataset && card.dataset.highlight === 'true') ||
+              String(card.className || '').includes('ring-2')),
+        );
       }
       return out;
     })()`)

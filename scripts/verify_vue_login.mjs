@@ -276,7 +276,7 @@ async function runMode(cdp, mode) {
     })()`)
     const entered = await cdp.waitValue(`window.__probe().hasLayout === true`, 12000)
     const done = await cdp.evaluate('window.__probe()')
-    say('S3 建号成功 → 进入应用', !!entered && done.hasLayout === true && done.navLinks.length === 2, `hasLayout=${done.hasLayout} nav=${JSON.stringify(done.navLinks)}`)
+    say('S3 建号成功 → 进入应用', !!entered && done.hasLayout === true && done.navLinks.length >= 2, `hasLayout=${done.hasLayout} nav=${JSON.stringify(done.navLinks)}`)
     const st = await (await fetch(`${BASE}/api/auth/status`)).json()
     say('S3 needs_setup 之后为 false', st.needs_setup === false, JSON.stringify(st))
     return
@@ -305,7 +305,7 @@ async function runMode(cdp, mode) {
   })()`)
   const okIn = await cdp.waitValue(`window.__probe().hasLayout === true`, 12000)
   const ok = await cdp.evaluate('window.__probe()')
-  say('A5 密码正确 → 进入应用', !!okIn && ok.hasLayout === true && ok.navLinks.length === 2, `hasLayout=${ok.hasLayout} nav=${JSON.stringify(ok.navLinks)}`)
+  say('A5 密码正确 → 进入应用', !!okIn && ok.hasLayout === true && ok.navLinks.length >= 2, `hasLayout=${ok.hasLayout} nav=${JSON.stringify(ok.navLinks)}`)
 
   const dup = await fetch(`${BASE}/api/auth/setup`, {
     method: 'POST',

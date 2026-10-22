@@ -430,7 +430,10 @@ async function main() {
       if (!modeBtn) { out.error = '未找到英译中选项'; return out; }
       modeBtn.click();
       await sleep(200);
-      out.modePicked = modeBtn.className.includes('bg-slate-900');
+      // 语义锚点优先 data-selected="true"（ARCH §3.2），兜底旧配色类名 bg-slate-900
+      out.modePicked =
+        (modeBtn.dataset && modeBtn.dataset.selected === 'true') ||
+        modeBtn.className.includes('bg-slate-900');
       const start = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('开始练习'));
       if (!start) { out.error = '未找到开始按钮'; return out; }
       start.click();
@@ -462,7 +465,10 @@ async function main() {
           const marked = [...card.querySelectorAll('[data-practice-option]')].find((o) =>
             o.textContent.trim().startsWith(want),
           );
-          out.correctTone = marked ? /emerald/.test(marked.className) : false;
+          // 语义锚点优先 data-tone="correct"（ARCH §3.2），兜底旧配色类名 emerald
+          out.correctTone = marked
+            ? (marked.dataset && marked.dataset.tone === 'correct') || /emerald/.test(marked.className || '')
+            : false;
           return out;
         }
         // 未知词：随便点一个再进入下一题
@@ -505,7 +511,10 @@ async function main() {
       out.modeFound = true;
       modeBtn.click();
       await sleep(220);
-      out.modePicked = modeBtn.className.includes('bg-slate-900');
+      // 语义锚点优先 data-selected="true"（ARCH §3.2），兜底旧配色类名 bg-slate-900
+      out.modePicked =
+        (modeBtn.dataset && modeBtn.dataset.selected === 'true') ||
+        modeBtn.className.includes('bg-slate-900');
       // 「语速」只在听写模式下出现
       out.hasRateRow = Boolean(document.querySelector('[data-practice-rate]'));
       const allCount = [...document.querySelectorAll('button')].filter((b) => b.textContent.trim().startsWith('全部')).pop();

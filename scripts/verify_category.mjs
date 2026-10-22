@@ -217,8 +217,11 @@ const waitFor = async (fn, timeout = 12000) => {
 const byText = (root, text) =>
   [...root.querySelectorAll('button, a')].find((el) => el.textContent.trim().includes(text)) || null;
 const findRowByTitle = (title) => {
+  // 语义锚点优先 data-media-title，兜底旧字重类名 font-medium（换皮后标题字重会变）
   const span = [...document.querySelectorAll('span')].find(
-    (s) => s.textContent.trim() === title && (s.className || '').includes('font-medium'),
+    (s) =>
+      s.textContent.trim() === title &&
+      (s.hasAttribute('data-media-title') || (s.className || '').includes('font-medium')),
   );
   if (!span) return null;
   let row = span;

@@ -253,9 +253,14 @@ await installSessionInBrowser(cdp, BASE)
 
 | # | 提交信息 | 内容 | hash |
 |---|---|---|---|
-| ① | `feat(ui-p0): token 基建 + 基线快照` | `src/styles/tokens.css`(新) / `src/index.css` / `tailwind.config.js` / 本文件 | 见 `git log --oneline` |
-| ② | `test(ui-p0): verify 断言与视觉类名解耦` | 7 个 `scripts/verify_*.mjs` | 见 `git log --oneline` |
+| ① | `feat(ui-p0): token 基建 + 基线快照` | `src/styles/tokens.css`(新) / `src/index.css` / `tailwind.config.js` / 本文件 | **`704c7a2`** |
+| ② | `test(ui-p0): verify 断言与视觉类名解耦` | 7 个 `scripts/verify_*.mjs` + 本文件的两处回填（提交 hash 与 D 系列偏差） | 本记录所在提交（即 `git log --oneline -1` 的首条） |
 
+> **为什么 ② 的 hash 不写成字面值**：git 的 hash 由提交内容算出，本文件本身在 ② 里被修改，
+> 因此「把 ② 的 hash 写进 ② 自身」在数学上不可能（写完 hash 就变了）。
+> 硬约束是「严格 2 次提交」，所以选择：① 的 hash 字面写入、② 用 `git log --oneline -1` 指代。
+> 两枚 hash 的最终值以 `git log --oneline -3` 为准，并已在交付报告里给出。
+>
 > 说明：`frontend-vue/dist/` 是 `.gitignore` 里的构建产物（`dist/` 全局忽略，仓库内 0 个被跟踪文件），
 > 本阶段构建产物**未提交**。
 
