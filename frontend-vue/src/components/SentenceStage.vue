@@ -274,13 +274,16 @@ function abState(): 'ab-idle' | 'ab-a' | 'ab-active' {
     data-testid="sentence-stage-card"
     :data-highlight="highlight ? 'true' : 'false'"
     :class="[
-      'flex min-h-0 flex-1 flex-col gap-2 rounded-xl border bg-white p-3 transition-colors sm:gap-3 sm:p-4',
+      'flex min-h-0 flex-1 flex-col gap-2 rounded-[20px] border-2 bg-white p-3 transition-colors sm:gap-3 sm:p-4',
       highlight ? 'border-amber-400 ring-2 ring-amber-200' : 'border-ink',
     ].join(' ')"
   >
     <!-- 句子工具行 -->
     <div class="flex flex-wrap items-center gap-2">
-      <span class="shrink-0 text-[11px] tabular-nums text-ink-3">#{{ sentence.idx + 1 }}</span>
+      <span
+        class="grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-ink bg-lemon-400 text-[12px] font-extrabold tabular-nums leading-none text-ink"
+        :title="`第 ${sentence.idx + 1} 句`"
+      >{{ sentence.idx + 1 }}</span>
 
       <button
         type="button"

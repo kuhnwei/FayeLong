@@ -130,7 +130,7 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
 </script>
 
 <template>
-  <div class="shrink-0 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+  <div class="shrink-0 rounded-lg border border-ink/20 bg-cream-2 p-3">
     <div class="flex items-start gap-2">
       <textarea
         data-testid="dictation-input"
@@ -142,7 +142,7 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
             ? '该句没有标准答案，无法听写'
             : '听音频，写下你听到的内容…（Enter 提交，Shift+Enter 换行）'
         "
-        class="min-h-[88px] flex-1 resize-y rounded-lg border border-slate-300 bg-white px-3 py-3 text-[17px] leading-relaxed text-slate-800 outline-none transition-colors focus:border-slate-500 disabled:bg-slate-100 sm:min-h-[124px] sm:px-4 sm:py-3.5 sm:text-2xl"
+        class="min-h-[88px] flex-1 resize-y rounded-lg border border-ink/30 bg-white px-3 py-3 text-[17px] leading-relaxed text-ink outline-none transition-colors focus:border-ink disabled:bg-cream-2 sm:min-h-[124px] sm:px-4 sm:py-3.5 sm:text-2xl"
         @input="onInput"
         @keydown="onKeydown"
       />
@@ -150,7 +150,7 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
         <button
           type="button"
           :disabled="!canSubmit"
-          class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2.5 text-[13px] text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:text-sm"
+          class="flex items-center justify-center gap-1.5 rounded-lg bg-lemon-400 px-4 py-2.5 text-[13px] font-bold text-ink transition-colors hover:bg-lemon-300 disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:text-sm"
           @click="handleSubmit"
         >
           <SendIcon class-name="h-4 w-4" />
@@ -161,7 +161,7 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
             type="button"
             :disabled="!sentence.clip_url"
             title="重听本句"
-            class="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            class="flex-1 rounded-lg border border-ink/20 bg-white px-2 py-1.5 text-xs text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
             @click="onReplay"
           >
             重听
@@ -170,7 +170,7 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
             type="button"
             :disabled="!draft.text"
             title="清空输入并收起校验结果"
-            class="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            class="flex-1 rounded-lg border border-ink/20 bg-white px-2 py-1.5 text-xs text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
             @click="clearInput"
           >
             清空
@@ -187,11 +187,11 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
 
     <div
       data-testid="dictation-meta"
-      class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400"
+      class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-3"
     >
       <button
         type="button"
-        class="flex items-center gap-1 text-slate-500 transition-colors hover:text-slate-800"
+        class="flex items-center gap-1 text-ink-3 transition-colors hover:text-ink"
         @click="showHistory = !showHistory"
       >
         <HistoryIcon class-name="h-3.5 w-3.5" />
@@ -205,12 +205,12 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
       </span>
     </div>
 
-    <div v-if="showHistory" class="mt-2 rounded-lg border border-slate-200 bg-white p-2">
-      <p v-if="historyLoading" class="px-1 py-1 text-[12px] text-slate-400">加载中…</p>
+    <div v-if="showHistory" class="mt-2 rounded-lg border border-ink/20 bg-white p-2">
+      <p v-if="historyLoading" class="px-1 py-1 text-[12px] text-ink-3">加载中…</p>
       <p v-if="historyIsError" class="px-1 py-1 text-[12px] text-red-500">
         {{ (historyError as Error).message }}
       </p>
-      <p v-if="historyData && historyData.items.length === 0" class="px-1 py-1 text-[12px] text-slate-400">
+      <p v-if="historyData && historyData.items.length === 0" class="px-1 py-1 text-[12px] text-ink-3">
         还没有听写记录
       </p>
       <div
@@ -234,7 +234,7 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
         data-testid="dictation-error-words"
         class="mb-2 flex flex-wrap items-center gap-1.5 px-1"
       >
-        <span class="text-[11px] text-slate-400">高频错误词</span>
+        <span class="text-[11px] text-ink-3">高频错误词</span>
         <span
           v-for="{ word, count } in errorWords"
           :key="word"
@@ -243,45 +243,45 @@ const bars = computed(() => (historyData.value ? [...historyData.value.items].re
         >
           {{ word }} ×{{ count }}
         </span>
-        <span v-if="historyData.total > historyData.items.length" class="text-[11px] text-slate-300">
+        <span v-if="historyData.total > historyData.items.length" class="text-[11px] text-ink-3">
           （基于最近 {{ historyData.items.length }} 次）
         </span>
       </div>
-      <div v-for="item in historyData?.items ?? []" :key="item.id" class="border-b border-slate-50 last:border-0">
+      <div v-for="item in historyData?.items ?? []" :key="item.id" class="border-b border-cream-2 last:border-0">
         <!-- 整行可点击展开/收起；aria-expanded + button 语义保证键盘可达 -->
         <button
           type="button"
           :data-testid="`dictation-history-item-${item.id}`"
           :aria-expanded="expandedId === item.id"
-          class="flex min-h-[32px] w-full min-w-0 items-center justify-between gap-3 px-1 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-50"
+          class="flex min-h-[32px] w-full min-w-0 items-center justify-between gap-3 px-1 py-1.5 text-left text-[12px] transition-colors hover:bg-lemon-100"
           @click="expandedId = expandedId === item.id ? null : item.id"
         >
-          <span class="shrink-0 text-slate-400" aria-hidden="true">
+          <span class="shrink-0 text-ink-3" aria-hidden="true">
             {{ expandedId === item.id ? '▾' : '▸' }}
           </span>
-          <span class="min-w-0 flex-1 truncate text-slate-600" :title="item.input">
+          <span class="min-w-0 flex-1 truncate text-ink-2" :title="item.input">
             <template v-if="item.input">{{ item.input }}</template>
-            <span v-else class="text-slate-300">（空）</span>
+            <span v-else class="text-ink-3">（空）</span>
           </span>
-          <span :class="`shrink-0 tabular-nums ${item.is_correct ? 'text-emerald-600' : 'text-slate-500'}`">
+          <span :class="`shrink-0 tabular-nums ${item.is_correct ? 'text-emerald-600' : 'text-ink-3'}`">
             {{ item.accuracy }}%
           </span>
-          <span class="shrink-0 text-[11px] text-slate-300">
+          <span class="shrink-0 text-[11px] text-ink-3">
             {{ formatRelative(item.created_at) }}
           </span>
         </button>
-        <div v-if="expandedId === item.id" class="mb-1.5 min-w-0 space-y-1.5 rounded-md bg-slate-50/70 px-2 py-2">
-          <p class="text-[11px] text-slate-400">
+        <div v-if="expandedId === item.id" class="mb-1.5 min-w-0 space-y-1.5 rounded-md bg-cream-2 px-2 py-2">
+          <p class="text-[11px] text-ink-3">
             对照基准为当前原文；原文若被校对修改，明细按最新原文重算。
           </p>
           <div class="min-w-0">
-            <span class="text-[11px] text-slate-400">当时提交</span>
+            <span class="text-[11px] text-ink-3">当时提交</span>
             <p
               :data-testid="`dictation-history-input-${item.id}`"
-              class="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-700"
+              class="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2"
             >
               <template v-if="item.input">{{ item.input }}</template>
-              <span v-else class="text-slate-300">（空）</span>
+              <span v-else class="text-ink-3">（空）</span>
             </p>
           </div>
           <!-- 词级标注复用本题型的结果组件，不在前端重算 diff -->
