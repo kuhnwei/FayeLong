@@ -45,7 +45,7 @@ import { useClipPlayer } from '../composables/useClipPlayer'
 import { FALLBACK_CODE, resolve } from '../question-types'
 import { usePlayer } from '../stores/player'
 import { formatBytes, formatDuration, formatSeconds } from '../utils/format'
-import { gridClass, type Draft, type StatOverride, type WordPopoverTarget, type WordRect } from '../types/study'
+import { gridClass, gridState, type Draft, type StatOverride, type WordPopoverTarget, type WordRect } from '../types/study'
 import { AlertIcon, NoteIcon, RefreshIcon, TargetIcon } from '../components/icons'
 
 /** 逐句的听写草稿：翻页回来时输入的内容与上次校验结果都还在 */
@@ -460,7 +460,7 @@ function playerActive(): boolean {
     <NotesPanel v-if="notesOpen" :media-id="id" @close="notesOpen = false" @jump="jumpToSentence" />
 
     <!-- --------------------------- 顶部条 --------------------------- -->
-    <div class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-2.5">
+    <div class="shrink-0 rounded-xl border border-ink bg-white px-3 py-2 sm:px-4 sm:py-2.5">
       <!--
         窄屏允许换行：右侧按钮组（播放 / 笔记 / 工具）是 shrink-0，单行时会把
         中间栏压到 ~90px —— 标题被截断，下面那行「已听写 / 已掌握 / 平均最佳」
@@ -471,21 +471,20 @@ function playerActive(): boolean {
         <RouterLink
           to="/"
           title="返回媒体库"
-          class="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+          class="shrink-0 rounded-lg border border-ink px-2.5 py-1.5 text-xs text-ink-2 transition-colors hover:bg-lemon-100"
         >
           ←
         </RouterLink>
 
         <div class="min-w-0 flex-1">
           <div class="flex items-baseline gap-2">
-            <h2 class="truncate text-[14px] font-medium text-slate-900">
-              {{ data?.title ?? '加载中…' }}
-            </h2>
-            <span v-if="total > 0" class="shrink-0 text-[12px] tabular-nums text-slate-400">
+            <h2 class="text-[14px] font-bold text-ink">学习页</h2>
+            <span v-if="total > 0" class="shrink-0 text-[12px] tabular-nums text-ink-3">
               第 {{ Math.min(index + 1, total) }} / {{ total }} 句
             </span>
           </div>
-          <div class="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11px] text-slate-400">
+          <p class="truncate text-[11px] text-ink-3">{{ data?.title ?? '加载中…' }}</p>
+          <div class="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11px] text-ink-3">
             <span
               :class="[
                 'rounded-full px-2 py-0.5',
@@ -512,7 +511,7 @@ function playerActive(): boolean {
               <span class="flex items-center gap-1 whitespace-nowrap">
                 <TargetIcon class-name="h-3 w-3 shrink-0" />
                 已听写
-                <span class="tabular-nums text-slate-600">
+                <span class="tabular-nums text-ink-2">
                   {{ summary.attempted }}/{{ summary.total }}
                 </span>
               </span>
@@ -520,7 +519,7 @@ function playerActive(): boolean {
                 · 已掌握 <span class="tabular-nums text-emerald-600">{{ summary.mastered }}</span>
               </span>
               <span v-if="summary.attempted > 0" class="whitespace-nowrap">
-                · 平均最佳 <span class="tabular-nums text-slate-600">{{ summary.avg }}%</span>
+                · 平均最佳 <span class="tabular-nums text-ink-2">{{ summary.avg }}%</span>
               </span>
             </span>
           </div>
@@ -536,8 +535,8 @@ function playerActive(): boolean {
             :class="[
               'rounded-lg px-2 py-1.5 text-[11px] transition-colors sm:px-2.5 sm:text-xs',
               playable
-                ? 'bg-slate-900 text-white hover:bg-slate-700'
-                : 'cursor-not-allowed bg-slate-100 text-slate-400',
+                ? 'bg-lemon-400 text-ink hover:bg-lemon-300'
+                : 'cursor-not-allowed bg-cream-2 text-ink-3',
             ].join(' ')"
             @click="openPlayer"
           >
@@ -549,7 +548,7 @@ function playerActive(): boolean {
             v-if="total > 0"
             type="button"
             title="查看本媒体全部句子笔记"
-            class="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 sm:px-2.5 sm:text-xs"
+            class="flex items-center gap-1 rounded-lg border border-ink px-2 py-1.5 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100 sm:px-2.5 sm:text-xs"
             @click="notesOpen = true"
           >
             <NoteIcon class-name="h-3.5 w-3.5" />
@@ -561,8 +560,8 @@ function playerActive(): boolean {
             :class="[
               'rounded-lg border px-2 py-1.5 text-[11px] transition-colors sm:px-2.5 sm:text-xs',
               toolsOpen
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+                ? 'border-ink bg-lemon-400 text-ink'
+                : 'border-ink text-ink-2 hover:bg-lemon-100',
             ].join(' ')"
             @click="toolsOpen = !toolsOpen"
           >
@@ -574,22 +573,22 @@ function playerActive(): boolean {
       <!-- 工具面板（低频操作收在这里，避免顶部条变高） -->
       <div
         v-if="toolsOpen"
-        class="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-2.5 text-[11px]"
+        class="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-cream-2 pt-2.5 text-[11px]"
       >
-        <label class="flex cursor-pointer items-center gap-1.5 text-slate-500">
-          <input v-model="autoReveal" type="checkbox" class="h-3.5 w-3.5 accent-slate-900" />
+        <label class="flex cursor-pointer items-center gap-1.5 text-ink-2">
+          <input v-model="autoReveal" type="checkbox" class="h-3.5 w-3.5 accent-[var(--lemon-500)]" />
           答错后自动显示原文
         </label>
         <div class="flex items-center gap-2">
-          <button type="button" class="text-slate-500 hover:text-slate-900" @click="revealAll('en')">
+          <button type="button" class="text-ink-2 hover:text-ink" @click="revealAll('en')">
             展开全部原文
           </button>
-          <span class="text-slate-200">·</span>
-          <button type="button" class="text-slate-500 hover:text-slate-900" @click="revealAll('zh')">
+          <span class="text-ink-3">·</span>
+          <button type="button" class="text-ink-2 hover:text-ink" @click="revealAll('zh')">
             展开全部翻译
           </button>
-          <span class="text-slate-200">·</span>
-          <button type="button" class="text-slate-500 hover:text-slate-900" @click="revealAll('none')">
+          <span class="text-ink-3">·</span>
+          <button type="button" class="text-ink-2 hover:text-ink" @click="revealAll('none')">
             全部折叠
           </button>
         </div>
@@ -598,7 +597,7 @@ function playerActive(): boolean {
             type="button"
             :disabled="rebuildMutation.isPending.value || processing || !data?.has_audio"
             title="用当前模型重新识别（会重建句子，原笔记与听写记录将清除）"
-            class="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            class="flex items-center gap-1 rounded-lg border border-ink px-2 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
             @click="rebuildMutation.mutate()"
           >
             <RefreshIcon class-name="h-3.5 w-3.5" />
@@ -609,7 +608,7 @@ function playerActive(): boolean {
             type="button"
             :disabled="clearClipsMutation.isPending.value"
             title="删除句子切片以回收磁盘空间"
-            class="rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            class="rounded-lg border border-ink px-2 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
             @click="clearClipsMutation.mutate()"
           >
             清理切片
@@ -626,21 +625,21 @@ function playerActive(): boolean {
       </div>
 
       <div v-if="processing" class="mt-2.5">
-        <div class="flex items-center justify-between text-[11px] text-slate-400">
+        <div class="flex items-center justify-between text-[11px] text-ink-3">
           <span>正在处理：解码 → 识别 → 翻译 → 切片</span>
           <span class="tabular-nums">
             {{ live?.stage ?? STATUS_LABEL[status] ?? status }} {{ progress }}%
           </span>
         </div>
-        <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+        <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-cream-2">
           <div
-            class="h-full rounded-full bg-slate-900 transition-[width] duration-500"
+            class="h-full rounded-full bg-lemon-400 transition-[width] duration-500"
             :style="{ width: `${Math.max(2, progress)}%` }"
           />
         </div>
       </div>
 
-      <p v-if="isLoading" class="py-3 text-center text-[13px] text-slate-400">加载中…</p>
+      <p v-if="isLoading" class="py-3 text-center text-[13px] text-ink-3">加载中…</p>
       <p v-if="isError" class="py-3 text-center text-[13px] text-red-600">
         {{ (error as Error).message }}
       </p>
@@ -680,9 +679,9 @@ function playerActive(): boolean {
     />
     <div
       v-else
-      class="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-center"
+      class="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-ink bg-white px-5 text-center"
     >
-      <p class="text-[13px] text-slate-400">
+      <p class="text-[13px] text-ink-3">
         <template v-if="!data">加载中…</template>
         <template v-else-if="processing">正在处理，完成后会自动出现句子</template>
         <template v-else-if="status === 'failed'">处理失败，请查看上方错误信息后在「工具」里重试</template>
@@ -693,23 +692,23 @@ function playerActive(): boolean {
     <!-- --------------------------- 底部：翻页 + 宫格 --------------------------- -->
     <div
       v-if="total > 0"
-      class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-2.5"
+      class="shrink-0 rounded-xl border border-ink bg-white px-3 py-2 sm:px-4 sm:py-2.5"
     >
       <div class="flex items-center gap-2 sm:gap-3">
         <button
           type="button"
           :disabled="index <= 0"
-          class="rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:py-2.5 sm:text-sm"
+          class="rounded-lg border border-ink px-3.5 py-2 text-[13px] text-ink-2 transition-colors hover:bg-lemon-100 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:py-2.5 sm:text-sm"
           @click="goTo(index - 1)"
         >
           ← 上一句
         </button>
 
         <div class="flex min-w-0 flex-1 items-center gap-2">
-          <span class="shrink-0 text-[11px] tabular-nums text-slate-400">
+          <span class="shrink-0 text-[11px] tabular-nums text-ink-3">
             {{ current ? `${formatSeconds(current.start_ms / 1000)} – ${formatSeconds(current.end_ms / 1000)}` : '' }}
           </span>
-          <div class="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-slate-400">
+          <div class="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-ink-3">
             <span class="flex items-center gap-1">
               <span class="h-2.5 w-2.5 rounded-sm bg-emerald-200" />已掌握
             </span>
@@ -717,7 +716,7 @@ function playerActive(): boolean {
               <span class="h-2.5 w-2.5 rounded-sm bg-amber-200" />练过
             </span>
             <span class="flex items-center gap-1">
-              <span class="h-2.5 w-2.5 rounded-sm bg-slate-200" />未听
+              <span class="h-2.5 w-2.5 rounded-sm bg-cream-2" />未听
             </span>
             <span class="hidden sm:inline">· ← → 翻页</span>
           </div>
@@ -728,7 +727,7 @@ function playerActive(): boolean {
         <button
           type="button"
           :disabled="index >= total - 1"
-          class="shrink-0 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-6 sm:py-3 sm:text-base"
+          class="shrink-0 rounded-lg bg-lemon-400 px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-lemon-300 disabled:cursor-not-allowed disabled:opacity-40 sm:px-6 sm:py-3 sm:text-base"
           @click="goTo(index + 1)"
         >
           下一句 →
@@ -744,6 +743,8 @@ function playerActive(): boolean {
           v-for="(sentence, i) in effective"
           :key="sentence.id"
           type="button"
+          :data-state="gridState(sentence, i === index)"
+          data-grid-cell
           :title="
             `第 ${i + 1} 句` +
             (sentence.attempt_count > 0

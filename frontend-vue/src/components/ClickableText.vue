@@ -97,7 +97,7 @@ function ariaPressedOf(wordIndex: number): boolean | undefined {
 </script>
 
 <template>
-  <p v-if="text" data-testid="sentence-text" :class="['font-medium leading-[1.4] text-slate-800', markMode ? 'select-none' : ''].join(' ')" :style="{ fontSize }">
+  <p v-if="text" data-testid="sentence-text" :class="['font-medium leading-[1.4] text-ink', markMode ? 'select-none' : ''].join(' ')" :style="{ fontSize }">
     <template v-for="(part, index) in parts" :key="index">
       <span v-if="index % 2 !== 1">{{ part }}</span>
       <button
@@ -117,5 +117,5 @@ function ariaPressedOf(wordIndex: number): boolean | undefined {
     </template>
     <slot name="trailing" />
   </p>
-  <p v-else class="text-[15px] leading-relaxed text-slate-400">（空）</p>
+  <p v-else class="text-[15px] leading-relaxed text-ink-3">（空）</p>
 </template>

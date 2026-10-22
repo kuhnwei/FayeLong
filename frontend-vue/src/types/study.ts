@@ -63,10 +63,23 @@ export function translationFontSize(length: number): string {
 
 /** 宫格格子的状态色：当前 > 已掌握 > 练过 > 未听 */
 export function gridClass(sentence: SentenceItem, active: boolean): string {
-  if (active) return 'bg-slate-900 text-white ring-2 ring-slate-400'
+  if (active) return 'bg-lemon-400 text-ink ring-2 ring-ink'
   if (sentence.mastered) return 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
   if (sentence.attempt_count > 0) return 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-  return 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+  return 'bg-cream-2 text-ink-3 hover:bg-cream'
+}
+
+/**
+ * 宫格四态语义锚点（ARCH §5.1.5 / §3.2）：`verify_m5` 优先读 `data-state`，
+ * 缺失才回落旧配色类名。与 `gridClass` 同源，二者必须保持同一分支顺序。
+ */
+export type GridState = 'active' | 'mastered' | 'attempted' | 'fresh'
+
+export function gridState(sentence: SentenceItem, active: boolean): GridState {
+  if (active) return 'active'
+  if (sentence.mastered) return 'mastered'
+  if (sentence.attempt_count > 0) return 'attempted'
+  return 'fresh'
 }
 
 /**

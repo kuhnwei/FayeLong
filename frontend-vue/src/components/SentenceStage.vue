@@ -260,19 +260,27 @@ function abLabel(): string {
   if (clip.abEnd.value === null) return `A ${formatSeconds(clip.abStart.value)}`
   return `${formatSeconds(clip.abStart.value)}–${formatSeconds(clip.abEnd.value)}`
 }
+
+/** A-B 状态机语义锚点（ARCH §3.2：ab-idle / ab-a / ab-active），verify_m5 优先读 data-state。 */
+function abState(): 'ab-idle' | 'ab-a' | 'ab-active' {
+  if (abActive.value) return 'ab-active'
+  if (props.clip.abStart.value !== null) return 'ab-a'
+  return 'ab-idle'
+}
 </script>
 
 <template>
   <div
     data-testid="sentence-stage-card"
+    :data-highlight="highlight ? 'true' : 'false'"
     :class="[
       'flex min-h-0 flex-1 flex-col gap-2 rounded-xl border bg-white p-3 transition-colors sm:gap-3 sm:p-4',
-      highlight ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200',
+      highlight ? 'border-amber-400 ring-2 ring-amber-200' : 'border-ink',
     ].join(' ')"
   >
     <!-- 句子工具行 -->
     <div class="flex flex-wrap items-center gap-2">
-      <span class="shrink-0 text-[11px] tabular-nums text-slate-400">#{{ sentence.idx + 1 }}</span>
+      <span class="shrink-0 text-[11px] tabular-nums text-ink-3">#{{ sentence.idx + 1 }}</span>
 
       <button
         type="button"
@@ -280,7 +288,7 @@ function abLabel(): string {
         :title="sentence.clip_url ? '播放本句' : '该句切片不可用'"
         :class="[
           iconBtn,
-          sentence.clip_url ? 'bg-slate-900 text-white hover:bg-slate-700' : 'bg-slate-100 text-slate-300',
+          sentence.clip_url ? 'bg-lemon-400 text-ink hover:bg-lemon-300' : 'bg-cream-2 text-ink-3',
         ].join(' ')"
         @click="togglePlay"
       >
@@ -295,8 +303,8 @@ function abLabel(): string {
         :class="[
           chipBtn,
           clip.loop.value
-            ? 'border-slate-900 bg-slate-900 text-white'
-            : 'border-slate-200 text-slate-500 hover:bg-slate-50',
+            ? 'border-ink bg-lemon-400 text-ink'
+            : 'border-ink text-ink-2 hover:bg-lemon-100',
           sentence.clip_url ? '' : 'cursor-not-allowed opacity-40',
         ].join(' ')"
         @click="toggleLoop"
@@ -309,15 +317,16 @@ function abLabel(): string {
       <button
         type="button"
         :disabled="!sentence.clip_url"
+        :data-state="abState()"
         :title="abTitle()"
         :class="[
           chipBtn,
           'tabular-nums',
           abActive
-            ? 'border-sky-600 bg-sky-600 text-white'
+            ? 'border-sky-600 bg-sky-600 text-ink'
             : clip.abStart.value !== null
               ? 'border-sky-300 bg-sky-50 text-sky-700'
-              : 'border-slate-200 text-slate-500 hover:bg-slate-50',
+              : 'border-ink text-ink-2 hover:bg-lemon-100',
           sentence.clip_url ? '' : 'cursor-not-allowed opacity-40',
         ].join(' ')"
         @click="cycleAB"
@@ -336,7 +345,7 @@ function abLabel(): string {
         :class="[
           chipBtn,
           'tabular-nums',
-          markMode ? 'border-amber-500 bg-amber-500 text-white' : 'border-slate-200 text-slate-500 hover:bg-slate-50',
+          markMode ? 'border-amber-500 bg-amber-500 text-ink' : 'border-ink text-ink-2 hover:bg-lemon-100',
           sentence.text_en ? '' : 'cursor-not-allowed opacity-40',
         ].join(' ')"
         @click="toggleMarkMode"
@@ -346,12 +355,12 @@ function abLabel(): string {
         <template v-if="marks.length > 0"> {{ marks.length }}</template>
       </button>
 
-      <span class="text-[11px] tabular-nums text-slate-400">
+      <span class="text-[11px] tabular-nums text-ink-3">
         {{ formatSeconds(sentence.start_ms / 1000) }} – {{ formatSeconds(sentence.end_ms / 1000) }}
-        <span class="ml-1 text-slate-300">({{ (spanMs / 1000).toFixed(1) }}s)</span>
+        <span class="ml-1 text-ink-3">({{ (spanMs / 1000).toFixed(1) }}s)</span>
       </span>
 
-      <span v-if="isActive && clip.duration.value > 0" class="text-[11px] tabular-nums text-slate-500">
+      <span v-if="isActive && clip.duration.value > 0" class="text-[11px] tabular-nums text-ink-2">
         {{ formatSeconds(clip.currentTime.value) }} / {{ formatSeconds(clip.duration.value) }}
       </span>
 
@@ -373,7 +382,7 @@ function abLabel(): string {
           title="本句笔记"
           :class="[
             chipBtn,
-            noteOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+            noteOpen ? 'border-ink bg-lemon-400 text-ink' : 'border-ink text-ink-2 hover:bg-lemon-100',
           ].join(' ')"
           @click="toggleNote"
         >
@@ -386,7 +395,7 @@ function abLabel(): string {
           title="校对：改原文 / 改时间 / 拆分 / 合并 / 重译"
           :class="[
             chipBtn,
-            correctOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+            correctOpen ? 'border-ink bg-lemon-400 text-ink' : 'border-ink text-ink-2 hover:bg-lemon-100',
           ].join(' ')"
           @click="toggleCorrect"
         >
@@ -408,7 +417,7 @@ function abLabel(): string {
         class="h-1 w-full cursor-pointer accent-sky-600"
         @input="clip.seek(Number(($event.target as HTMLInputElement).value))"
       />
-      <span class="shrink-0 text-[10px] tabular-nums text-slate-400">
+      <span class="shrink-0 text-[10px] tabular-nums text-ink-3">
         {{ formatSeconds(clip.currentTime.value) }}/{{ formatSeconds(clip.duration.value) }}
       </span>
     </div>
@@ -443,17 +452,17 @@ function abLabel(): string {
     <div v-if="editing" class="flex min-h-0 flex-1 flex-col gap-2">
       <textarea
         v-model="draftEn"
-        class="min-h-0 flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-[15px] leading-relaxed text-slate-800 outline-none focus:border-slate-500"
+        class="min-h-0 flex-1 resize-none rounded-lg border border-ink-3 px-3 py-2 text-[15px] leading-relaxed text-ink outline-none focus:border-ink"
       />
       <textarea
         v-model="draftZh"
         rows="2"
-        class="shrink-0 resize-none rounded-lg border border-slate-300 px-3 py-2 text-[13px] leading-relaxed text-slate-600 outline-none focus:border-slate-500"
+        class="shrink-0 resize-none rounded-lg border border-ink-3 px-3 py-2 text-[13px] leading-relaxed text-ink-2 outline-none focus:border-ink"
       />
       <div class="flex shrink-0 items-center justify-end gap-2">
         <button
           type="button"
-          class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+          class="rounded-lg border border-ink px-3 py-1.5 text-xs text-ink-2 hover:bg-lemon-100"
           @click="onCancelEdit"
         >
           取消
@@ -461,7 +470,7 @@ function abLabel(): string {
         <button
           type="button"
           :disabled="busy"
-          class="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white hover:bg-slate-700 disabled:opacity-40"
+          class="flex items-center gap-1.5 rounded-lg bg-lemon-400 px-3 py-1.5 text-xs text-ink hover:bg-lemon-300 disabled:opacity-40"
           @click="saveEdit"
         >
           <CheckIcon class-name="h-3.5 w-3.5" />
@@ -494,7 +503,7 @@ function abLabel(): string {
               </span>
             </template>
           </ClickableText>
-          <div v-else class="my-4 flex items-center gap-2 rounded-lg bg-slate-50 px-4 py-2.5 text-[13px] text-slate-400">
+          <div v-else class="my-4 flex items-center gap-2 rounded-lg bg-cream px-4 py-2.5 text-[13px] text-ink-3">
             <EyeOffIcon class-name="h-4 w-4" />
             原文已隐藏 —— 先听，再写下来
           </div>
@@ -504,19 +513,19 @@ function abLabel(): string {
             <p
               v-if="showZh"
               data-testid="sentence-zh"
-              class="leading-relaxed text-slate-500"
+              class="leading-relaxed text-ink-2"
               :style="{ fontSize: translationFontSize(sentence.text_zh.length) }"
             >
               <template v-if="sentence.text_zh">{{ sentence.text_zh }}</template>
               <span v-else class="text-amber-600">翻译缺失，可用「校对」重译或手改</span>
             </p>
-            <span v-else class="text-[12px] text-slate-300">翻译已隐藏</span>
+            <span v-else class="text-[12px] text-ink-3">翻译已隐藏</span>
           </div>
 
           <div class="mt-2 flex items-center gap-3">
             <button
               type="button"
-              class="flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-slate-800"
+              class="flex items-center gap-1 text-[11px] text-ink-2 transition-colors hover:text-ink"
               @click="onToggleEn"
             >
               <EyeOffIcon v-if="showEn" class-name="h-3.5 w-3.5" />
@@ -525,7 +534,7 @@ function abLabel(): string {
             </button>
             <button
               type="button"
-              class="flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-slate-800"
+              class="flex items-center gap-1 text-[11px] text-ink-2 transition-colors hover:text-ink"
               @click="onToggleZh"
             >
               <EyeOffIcon v-if="showZh" class-name="h-3.5 w-3.5" />
@@ -539,15 +548,15 @@ function abLabel(): string {
       <!-- 校对面板（低频，默认收起） -->
       <div
         v-if="correctOpen"
-        class="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2"
+        class="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-ink bg-cream-2 px-3 py-2"
       >
-        <span class="text-[11px] text-slate-400">校对：</span>
+        <span class="text-[11px] text-ink-3">校对：</span>
         <button
           v-if="canSplit"
           type="button"
           :disabled="busy"
           :title="`在播放位置（${formatSeconds(playheadMs / 1000)}）拆分`"
-          class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+          class="flex items-center gap-1 rounded-lg border border-ink bg-white px-2 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
           @click="splitAtPlayhead"
         >
           <ScissorsIcon class-name="h-3.5 w-3.5" />
@@ -557,7 +566,7 @@ function abLabel(): string {
           type="button"
           :disabled="busy"
           title="与下一句合并"
-          class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+          class="flex items-center gap-1 rounded-lg border border-ink bg-white px-2 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
           @click="onMergeNext"
         >
           <MergeIcon class-name="h-3.5 w-3.5" />
@@ -567,7 +576,7 @@ function abLabel(): string {
           type="button"
           :disabled="busy || !sentence.text_en"
           title="重新翻译本句"
-          class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+          class="flex items-center gap-1 rounded-lg border border-ink bg-white px-2 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
           @click="onRetranslate"
         >
           <TranslateIcon class-name="h-3.5 w-3.5" />
@@ -577,7 +586,7 @@ function abLabel(): string {
           type="button"
           :disabled="busy"
           title="编辑原文 / 翻译"
-          class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+          class="flex items-center gap-1 rounded-lg border border-ink bg-white px-2 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100 disabled:opacity-40"
           @click="onStartEdit"
         >
           <PencilIcon class-name="h-3.5 w-3.5" />
