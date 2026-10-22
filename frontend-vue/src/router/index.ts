@@ -3,6 +3,7 @@ import MediaLibraryPage from '../pages/MediaLibraryPage.vue'
 import StudyPage from '../pages/StudyPage.vue'
 import VocabPage from '../pages/VocabPage.vue'
 import VocabPracticePage from '../pages/VocabPracticePage.vue'
+import StatsPage from '../pages/StatsPage.vue'
 
 /**
  * 路由表照搬旧 `frontend/src/App.tsx` 的真实结构（4 条 + `*` 兜底）。
@@ -18,6 +19,7 @@ const router = createRouter({
     { path: '/study/:mediaId', name: 'study', component: StudyPage },
     { path: '/vocab', name: 'vocab', component: VocabPage },
     { path: '/vocab/practice', name: 'vocab-practice', component: VocabPracticePage },
+    { path: '/stats', name: 'stats', component: StatsPage },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
