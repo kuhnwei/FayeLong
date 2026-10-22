@@ -190,6 +190,13 @@
   - 🔴 **少而高并发 ≫ 多轮低并发**：G2 并发建表用例 4 进程×4 轮（11.7s/命中 67%）→ **8 进程×1 轮（5.07s/未修版 3/3 全红）**。
   - ⚠️ `with sqlite3.connect(...)` **只提交事务不关闭连接**（不是 `contextlib.closing`）→ Windows 上文件被持有，`rmtree(ignore_errors=True)` 静默失败。
   - 挂账（P4）：非 media 分支无 fence（`grade_writing` 前必修）；`requeue_unfinished()` 与运行中 worker 重叠；`_PoolRunner.idle()` 用全局 `has_active_work`；`停止 FayeLong.bat` 输出为英文（cmd+chcp 65001 解析中文批处理不可靠）。
+- **2026-10-22：P4 全部完成（题型插件化 + IELTS 六表 + 写作批改异步化），G4 判据成立**。全量 **369 passed / 1 skipped**；契约 **41/49**；真库零写入。P3 那四条挂账已在本阶段清掉（fence / requeue / idle / bat 文案）。
+  - ⭐ **版本库补齐**：`frontend-vue/`、`backend/tests/`、`migrations/`、`contracts/` 此前**全部 untracked**（P1–P4A 两周无基线），已整理成 6 个提交。**纪律第 9 条：阶段结束必须提交进 git。**
+  - ⭐ **题型插件**：`services/question_types/`（重复 code 报错、空表不崩）+ `GET /api/question-types` **实时读注册表**；前端 `src/question-types/` 三级降级；`<component :is>` 落在 `SentenceStage.vue` 而非 StudyPage（上移会改 DOM 层级、威胁 `verify_mobile`）
+  - ⭐ **IELTS 迁移**：`0003` 只 `CREATE`；全新库 18 表/131 列/20 索引/11 外键；老库副本升级后**老 9 表逐表行哈希不变**（不能只看 TOTAL）。⚠️ **验证「只回退本批」用 `downgrade 0002`，不是 `downgrade base`**（base 在 0001 之前，0001 就是建老 9 表的迁移）
+  - 🔴 **report 必须按 `submitted_at` 设闸**（QA 抓到未交卷可读 explanation）：闸放**领域层**（API 层会让导出/SSE/批处理绕过）；`ResponseOut` 删掉 `detail`，判分明细只经 report；判据用 `submitted_at`（单向锁定）而非 status，未来「边答边判」不会绕过
+  - ⭐ **写作批改默认降级**：`FAYELONG_GRADING_PROVIDER=off` ⇒ 零付费离线可用，`degraded` 是**成功态**（job `done` 非 `failed`）；缓存不入降级结果；密钥四出口无原文；`ungraded ≠ degraded`，`pending` 只数会被判出来的题
+  - 挂账（P5）：`grade_writing` job 的 `ref_id` 指向 `responses.id`，加删除端点时必须清理 job；前端 `QuestionTypeInfo` 可换成生成类型别名；真机断网演练未做。
 - ⚠️ **数据安全不变量已换口径（2026-10-16 修正，别再比对文件 md5）**：
   原来记的「`data/app.db` md5 必须恒为 `61fb174d…`」是**错的**。P1 Round B 首次对真实后端跑「登录」验收时，后端 `api/auth.py::login` 成功会写 `users.last_login_at` → 文件 md5 从 `61fb174d40d6aed496800e2c56b1489f` 变为 `0e0a714e919468d3d8db3d922b36a5a6`。
   **这是应用本来就该发生的写，不是数据损坏**（已只读核对：9 张表行数、media 状态、`media/library/` 目录、文件大小 131072 全部未变；DB mtime 恰等于 `last_login_at` 的 +08:00 时刻）。

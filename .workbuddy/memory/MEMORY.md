@@ -14,7 +14,13 @@
 ## 正在执行
 **REFACTOR-PLAN-001**（`docs/REFACTOR-PLAN-001-执行计划.md`，施工文件，按闸门 G0→G5 推进）：
 前端 React→Vue3 全量重写（新建 `frontend-vue/`，**不覆盖 `frontend/`**）+ 后端架构债（Alembic / jobs+worker / CPU-IO 分池 / 测试网 / health 扩展）+ 题型插件化 + IELTS 新表族。**后端不换语言**。
-- 2026-10-20 进度：**前端链 P0–P2 + 后端 P3 全部完成，G3 四项判据达成**（均经 QA 独立复核）。`frontend-vue/src` **7,895 行**，5 条路由全可用；后端 **278 passed / 1 skipped**、契约 34/42 不变。**下一步：P4 题型插件化 + IELTS 数据模型**。
+- 2026-10-22 进度：**前端链 P0–P2 + 后端 P3 + P4 全部完成，G3 四项 + G4 判据均达成**（均经 QA 独立复核）。后端 **369 passed / 1 skipped**、契约 **41/49**（P4 两次合法变更）；`frontend-vue/src` 7,895 行。**下一步：P5 切换上线**（双跑 → 静态目录候选 → 云端灰度 → 硬切换 → 冻结旧 React）。
+  - 🔴 **版本库**：`frontend-vue/`、`tests/`、`migrations/`、`contracts/` 此前全 untracked（两周无基线），已补 6 个提交。**阶段结束必须 commit。**
+  - ⭐ **P4 题型插件**：`services/question_types/` + `GET /api/question-types`（实时读注册表）；前端 `src/question-types/` 三级降级；`<component :is>` 在 `SentenceStage.vue`（不是 StudyPage，上移威胁 `verify_mobile`）。
+  - 🔴 **answer 铁律三重力证**：schema 无该字段 + 白名单挑字段 + `SECRET-*` 串断言；`report` **必须按 `submitted_at` 设闸**（领域层 409），`ResponseOut` 已删 `detail` —— 判分明细只经 report。
+  - ⭐ **IELTS 迁移口径**：`0003` 只 `CREATE`；18 表/131 列/20 索引/11 外键；老库副本升级后**老 9 表逐表哈希不变**（TOTAL 必变，别拿 TOTAL 当证据）；**「只回退本批」用 `downgrade 0002`，不是 `downgrade base`**。
+  - ⭐ **写作批改默认降级**：`FAYELONG_GRADING_PROVIDER=off` ⇒ 零付费离线可用，`degraded` 是成功态；缓存不存降级结果；`ungraded ≠ degraded`。
+- ⭐ **数据安全不变量**：一律用**内容指纹** `python scripts/fingerprint_data.py`，基线 `TOTAL 278bcd28…6b13104c90ff4d32dad697f3b4f`；**文件 md5 不可靠**（真实登录会写 `users.last_login_at`）。
   - ⭐ **P3-4 分层原则**：`api/media.py` 682→420，新增 `services/media_ops.py` 承载**请求侧**领域动作；**不要**并进 `services/media.py`（那是 worker 热路径，4 stage + fencing，跑在 CPU/IO 池，两者失败语义不同）。
   - ⭐ **job_id 日志**：`ThreadPoolExecutor.submit` **不传播 contextvars** → 必须**在执行线程内部** `with job_log_context(...)`，不能在提交侧 `copy_context()`；`Filter` 要挂在 **handler** 上（logger 的 filter 不管子 logger 的 propagate）。
   - 🔴 **打包三坑**：① embeddable Python 的 `_pth` 隔离模式**忽略 `PYTHONPATH`** → `python -m app.worker` 在包里起不来，须用 `packaging/worker_entry.py`（`runpy`）；② 两进程首启 `create_all` 非原子 → `_create_all_tolerant` 重试 `already exists` + `readonly/locked` 两组；③ **改过的文件不能直接 `cmp`**（build.ps1 对 txt 做占位符+CRLF、对 bat 做 CRLF）。
