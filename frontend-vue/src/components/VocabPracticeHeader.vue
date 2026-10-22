@@ -22,15 +22,15 @@ const emit = defineEmits<{ (e: 'back'): void }>()
 <template>
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
-      <h2 class="text-[15px] font-medium text-slate-900">生词练习</h2>
-      <p class="mt-1 text-[13px] text-slate-500">
+      <h2 class="text-[15px] font-medium text-ink">生词练习</h2>
+      <p class="mt-1 text-[13px] text-ink-2">
         用生词本里的词做中译英 / 英译中 / 听写练习，答错的词会单独列出来。
       </p>
     </div>
     <button
       v-if="canBack"
       type="button"
-      class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50"
+      class="flex items-center gap-1.5 rounded-lg border border-ink px-3 py-2 text-[12px] text-ink-2 transition-colors hover:bg-lemon-100"
       @click="emit('back')"
     >
       <BackIcon class-name="h-3.5 w-3.5" />
@@ -39,7 +39,7 @@ const emit = defineEmits<{ (e: 'back'): void }>()
     <RouterLink
       v-else
       to="/vocab"
-      class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50"
+      class="flex items-center gap-1.5 rounded-lg border border-ink px-3 py-2 text-[12px] text-ink-2 transition-colors hover:bg-lemon-100"
     >
       <BackIcon class-name="h-3.5 w-3.5" />
       返回生词本

@@ -12,7 +12,7 @@ defineProps<Props>()
 
 <template>
   <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
-    <span class="w-[64px] shrink-0 pt-2 text-[12px] text-slate-500">{{ label }}</span>
+    <span class="w-[64px] shrink-0 pt-2 text-[12px] text-ink-2">{{ label }}</span>
     <div class="flex flex-1 flex-wrap gap-2">
       <slot />
     </div>

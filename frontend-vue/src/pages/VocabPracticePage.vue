@@ -119,8 +119,8 @@ const accuracyTone = computed(() =>
   accuracy.value >= 80
     ? 'text-amber-500'
     : accuracy.value >= 60
-      ? 'text-slate-400'
-      : 'text-slate-300',
+      ? 'text-ink-3'
+      : 'text-ink-3',
 )
 const wrongItems = computed<VocabItem[]>(() =>
   questions.value.filter((_, i) => results.value[i] === false).map((q) => q.item),
@@ -270,7 +270,14 @@ function optionTone(option: string): string {
   const isPickedOption = option === picked.value
   if (revealed.value && isCorrectOption) return 'border-emerald-300 bg-emerald-50 text-emerald-800'
   if (revealed.value && isPickedOption) return 'border-red-300 bg-red-50 text-red-700'
-  return 'border-slate-200 hover:border-slate-400 hover:bg-slate-50'
+  return 'border-ink hover:border-ink-3 hover:bg-lemon-100'
+}
+
+/** 选项的语义态（T03 解耦锚点：verify_vocab_practice 优先读 data-tone，class fallback 是 emerald）。 */
+function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
+  if (revealed.value && option === current.value?.correctOption) return 'correct'
+  if (revealed.value && option === picked.value) return 'wrong'
+  return 'neutral'
 }
 </script>
 
@@ -278,7 +285,7 @@ function optionTone(option: string): string {
   <!-- 加载 -->
   <div
     v-if="isLoading"
-    class="rounded-xl border border-slate-200 bg-white px-3 py-10 text-center text-[13px] text-slate-400 sm:px-5"
+    class="rounded-xl border border-ink bg-white px-3 py-10 text-center text-[13px] text-ink-3 sm:px-5"
   >
     加载生词本…
   </div>
@@ -294,17 +301,17 @@ function optionTone(option: string): string {
   <!-- 生词不足 -->
   <div v-else-if="!withMeaning.length" data-practice-phase="empty" class="space-y-4">
     <VocabPracticeHeader :can-back="false" />
-    <div class="rounded-xl border border-slate-200 bg-white px-3 py-12 text-center sm:px-5">
-      <BookIcon class-name="mx-auto h-8 w-8 text-slate-300" />
-      <p class="mt-3 text-[13px] text-slate-500">
+    <div class="rounded-xl border border-ink bg-white px-3 py-12 text-center sm:px-5">
+      <BookIcon class-name="mx-auto h-8 w-8 text-ink-3" />
+      <p class="mt-3 text-[13px] text-ink-2">
         生词本里还没有「带释义」的生词，暂时无法出题。
       </p>
-      <p class="mt-1 text-[12px] text-slate-400">
+      <p class="mt-1 text-[12px] text-ink-3">
         到学习页点击原文里的单词，查词后加入生词本，这里就能开始练习了。
       </p>
       <RouterLink
         to="/vocab"
-        class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] text-white transition-colors hover:bg-slate-700"
+        class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-lemon-400 px-3.5 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-300"
       >
         返回生词本
       </RouterLink>
@@ -315,7 +322,7 @@ function optionTone(option: string): string {
   <div v-else-if="phase === 'setup'" data-practice-phase="setup" class="space-y-5">
     <VocabPracticeHeader :can-back="false" />
 
-    <div class="space-y-5 rounded-xl border border-slate-200 bg-white p-5">
+    <div class="space-y-5 rounded-xl border border-ink bg-white p-5">
       <VocabPracticeField label="练习方式">
         <VocabPracticeChoice
           :active="mode === 'zh2en'"
@@ -387,11 +394,11 @@ function optionTone(option: string): string {
         />
       </VocabPracticeField>
 
-      <div class="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+      <div class="flex flex-wrap items-center gap-3 border-t border-cream-2 pt-4">
         <button
           type="button"
           :disabled="!enough"
-          class="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-[13px] text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+          class="flex items-center gap-1.5 rounded-lg bg-lemon-400 px-4 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-300 disabled:cursor-not-allowed disabled:bg-cream-2 disabled:text-ink-3"
           @click="start"
         >
           <TargetIcon class-name="h-4 w-4" />
@@ -409,8 +416,8 @@ function optionTone(option: string): string {
               : '当前范围内没有带释义的生词，换个范围试试'
           }}
         </span>
-        <span class="ml-auto flex items-center gap-1 text-[11px] text-slate-400">
-          <kbd class="rounded border border-slate-200 px-1.5 py-0.5">Enter</kbd>
+        <span class="ml-auto flex items-center gap-1 text-[11px] text-ink-3">
+          <kbd class="rounded border border-ink px-1.5 py-0.5">Enter</kbd>
           提交 / 下一题
         </span>
       </div>
@@ -421,21 +428,21 @@ function optionTone(option: string): string {
   <div v-else-if="phase === 'result'" data-practice-phase="result" class="space-y-5">
     <VocabPracticeHeader :can-back="true" @back="backToSetup" />
 
-    <div class="rounded-xl border border-slate-200 bg-white p-6 text-center">
+    <div class="rounded-xl border border-ink bg-white p-6 text-center">
       <TrophyIcon :class-name="`mx-auto h-9 w-9 ${accuracyTone}`" />
       <p
         data-practice-accuracy
-        class="mt-3 text-[28px] font-medium tabular-nums text-slate-900"
+        class="mt-3 text-[28px] font-medium tabular-nums text-ink"
       >
         {{ accuracy }}%
       </p>
-      <p class="mt-1 text-[13px] text-slate-500">答对 <span class="tabular-nums text-emerald-600">{{ correctCount }}</span> / <span class="tabular-nums">{{ questions.length }}</span> 题　·　用时 {{ formatDuration(elapsed) }}</p>
-      <p class="mt-2 text-[12px] text-slate-400">{{ MODE_META[mode].result }}</p>
+      <p class="mt-1 text-[13px] text-ink-2">答对 <span class="tabular-nums text-emerald-600">{{ correctCount }}</span> / <span class="tabular-nums">{{ questions.length }}</span> 题　·　用时 {{ formatDuration(elapsed) }}</p>
+      <p class="mt-2 text-[12px] text-ink-3">{{ MODE_META[mode].result }}</p>
 
       <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] text-slate-700 transition-colors hover:bg-slate-50"
+          class="flex items-center gap-1.5 rounded-lg border border-ink px-3.5 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-100"
           @click="backToSetup"
         >
           <ShuffleIcon class-name="h-3.5 w-3.5" />
@@ -445,7 +452,7 @@ function optionTone(option: string): string {
           v-if="wrongItems.length > 0"
           type="button"
           data-practice-retry-wrong
-          class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] text-slate-700 transition-colors hover:bg-slate-50"
+          class="flex items-center gap-1.5 rounded-lg border border-ink px-3.5 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-100"
           @click="begin(wrongItems)"
         >
           <RefreshIcon class-name="h-3.5 w-3.5" />
@@ -453,7 +460,7 @@ function optionTone(option: string): string {
         </button>
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] text-white transition-colors hover:bg-slate-700"
+          class="flex items-center gap-1.5 rounded-lg bg-lemon-400 px-3.5 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-300"
           @click="start"
         >
           <TargetIcon class-name="h-3.5 w-3.5" />
@@ -461,33 +468,33 @@ function optionTone(option: string): string {
         </button>
         <RouterLink
           to="/vocab"
-          class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] text-slate-700 transition-colors hover:bg-slate-50"
+          class="flex items-center gap-1.5 rounded-lg border border-ink px-3.5 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-100"
         >
           返回生词本
         </RouterLink>
       </div>
     </div>
 
-    <div v-if="wrongItems.length > 0" class="rounded-xl border border-slate-200 bg-white p-5">
-      <h3 class="text-[13px] font-medium text-slate-900">错题回顾（{{ wrongItems.length }}）</h3>
+    <div v-if="wrongItems.length > 0" class="rounded-xl border border-ink bg-white p-5">
+      <h3 class="text-[13px] font-medium text-ink">错题回顾（{{ wrongItems.length }}）</h3>
       <ul class="mt-3 space-y-2.5">
         <li
           v-for="item in wrongItems"
           :key="item.id"
-          class="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-slate-100 pt-2.5 first:border-0 first:pt-0"
+          class="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-cream-2 pt-2.5 first:border-0 first:pt-0"
         >
-          <span class="text-[14px] font-medium text-slate-900">{{ DISPLAY_NAME(item) }}</span>
+          <span class="text-[14px] font-medium text-ink">{{ DISPLAY_NAME(item) }}</span>
           <button
             v-if="canSpeak"
             type="button"
             :title="`朗读 ${DISPLAY_NAME(item)}`"
-            class="rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            class="rounded p-0.5 text-ink-3 transition-colors hover:bg-lemon-100 hover:text-ink"
             @click="speakEnglish(DISPLAY_NAME(item))"
           >
             <SpeakerIcon class-name="h-3.5 w-3.5" />
           </button>
-          <span v-if="item.phonetic" class="text-[11px] text-slate-400">/{{ item.phonetic }}/</span>
-          <span class="w-full text-[12px] leading-relaxed text-slate-600">{{ item.translation }}</span>
+          <span v-if="item.phonetic" class="text-[11px] text-ink-3">/{{ item.phonetic }}/</span>
+          <span class="w-full text-[12px] leading-relaxed text-ink-2">{{ item.translation }}</span>
         </li>
       </ul>
     </div>
@@ -496,7 +503,7 @@ function optionTone(option: string): string {
   <!-- 没有可用题目 -->
   <div
     v-else-if="!current"
-    class="rounded-xl border border-slate-200 bg-white px-3 py-10 text-center text-[13px] text-slate-400 sm:px-5"
+    class="rounded-xl border border-ink bg-white px-3 py-10 text-center text-[13px] text-ink-3 sm:px-5"
   >
     没有可用题目。
   </div>
@@ -507,28 +514,28 @@ function optionTone(option: string): string {
 
     <!-- 进度 -->
     <div class="flex items-center gap-3">
-      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-cream-2">
         <div
           data-practice-progress
-          class="h-full rounded-full bg-slate-900 transition-all duration-300"
+          class="h-full rounded-full bg-lemon-400 transition-all duration-300"
           :style="{ width: `${progress}%` }"
         />
       </div>
-      <span class="shrink-0 text-[12px] tabular-nums text-slate-500">
+      <span class="shrink-0 text-[12px] tabular-nums text-ink-2">
         {{ index + 1 }} / {{ questions.length }}
       </span>
     </div>
 
-    <div class="rounded-xl border border-slate-200 bg-white p-6">
+    <div class="rounded-xl border border-ink bg-white p-6">
       <!-- 题干 -->
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span
           :data-practice-badge="mode"
-          class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
+          class="rounded bg-cream-2 px-1.5 py-0.5 text-[10px] text-ink-2"
         >
           {{ MODE_META[mode].badge }}
         </span>
-        <span v-if="current.item.media_title" class="text-[10px] text-slate-400">
+        <span v-if="current.item.media_title" class="text-[10px] text-ink-3">
           来自《{{ current.item.media_title }}》
         </span>
       </div>
@@ -538,22 +545,22 @@ function optionTone(option: string): string {
         <button
           type="button"
           data-practice-play
-          class="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[14px] text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100 sm:px-5 sm:py-3.5"
+          class="flex items-center gap-2.5 rounded-xl border border-ink bg-cream px-4 py-3 text-[14px] text-ink transition-colors hover:border-ink-3 hover:bg-lemon-100 sm:px-5 sm:py-3.5"
           @click="listen()"
         >
-          <SpeakerIcon class-name="h-5 w-5 text-slate-500" />
+          <SpeakerIcon class-name="h-5 w-5 text-ink-2" />
           {{ plays === 0 ? '点击播放发音' : '再听一次' }}
         </button>
         <div class="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <button
             type="button"
             data-practice-play-slow
-            class="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition-colors hover:bg-slate-50"
+            class="rounded-lg border border-ink px-2.5 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100"
             @click="listen(0.6)"
           >
             慢速重播
           </button>
-          <span data-practice-plays class="text-[11px] text-slate-400">已听 {{ plays }} 次</span>
+          <span data-practice-plays class="text-[11px] text-ink-3">已听 {{ plays }} 次</span>
         </div>
       </div>
 
@@ -561,17 +568,17 @@ function optionTone(option: string): string {
       <p
         v-else-if="isSpelling"
         data-practice-prompt
-        class="mt-3 text-[17px] leading-relaxed text-slate-900"
+        class="mt-3 text-[17px] leading-relaxed text-ink"
       >
         {{ current.item.translation }}
       </p>
 
       <!-- 英译中：英文单词当题干 -->
       <div v-else class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span data-practice-prompt class="text-[26px] font-medium text-slate-900">
+        <span data-practice-prompt class="text-[26px] font-medium text-ink">
           {{ DISPLAY_NAME(current.item) }}
         </span>
-        <span v-if="current.item.phonetic" class="text-[12px] text-slate-400">
+        <span v-if="current.item.phonetic" class="text-[12px] text-ink-3">
           /{{ current.item.phonetic }}/
         </span>
         <button
@@ -579,7 +586,7 @@ function optionTone(option: string): string {
           type="button"
           data-practice-speak
           title="朗读"
-          class="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-500 transition-colors hover:bg-slate-50"
+          class="flex items-center gap-1 rounded-lg border border-ink px-2 py-1 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100"
           @click="speakEnglish(DISPLAY_NAME(current.item))"
         >
           <SpeakerIcon class-name="h-3.5 w-3.5" />
@@ -589,13 +596,13 @@ function optionTone(option: string): string {
 
       <p
         v-if="isSpelling && mode === 'zh2en' && current.item.context"
-        class="mt-2 text-[11px] leading-relaxed text-slate-400"
+        class="mt-2 text-[11px] leading-relaxed text-ink-3"
       >
         上下文：{{ current.item.context }}
       </p>
 
       <!-- 作答区 -->
-      <div class="mt-5 border-t border-slate-100 pt-5">
+      <div class="mt-5 border-t border-cream-2 pt-5">
         <div v-if="isSpelling" class="flex flex-wrap items-center gap-2">
           <input
             ref="inputRef"
@@ -607,26 +614,26 @@ function optionTone(option: string): string {
             autocapitalize="off"
             :spellcheck="false"
             :class="[
-              'w-full max-w-[320px] rounded-lg border px-3 py-2 text-[15px] text-slate-800 outline-none transition-colors disabled:bg-slate-50',
+              'w-full max-w-[320px] rounded-lg border px-3 py-2 text-[15px] text-ink outline-none transition-colors disabled:bg-cream',
               revealed
                 ? answered
                   ? 'border-emerald-300 bg-emerald-50/40'
                   : 'border-red-300 bg-red-50/40'
-                : 'border-slate-300 focus:border-slate-500',
+                : 'border-ink-3 focus:border-ink',
             ]"
           />
           <template v-if="!revealed">
             <button
               type="button"
               data-practice-submit
-              class="rounded-lg bg-slate-900 px-4 py-2 text-[13px] text-white transition-colors hover:bg-slate-700"
+              class="rounded-lg bg-lemon-400 px-4 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-300"
               @click="submitSpelling"
             >
               提交
             </button>
             <button
               type="button"
-              class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-[12px] text-slate-500 transition-colors hover:bg-slate-50"
+              class="flex items-center gap-1 rounded-lg border border-ink px-3 py-2 text-[12px] text-ink-2 transition-colors hover:bg-lemon-100"
               @click="giveUp"
             >
               <LightbulbIcon class-name="h-3.5 w-3.5" />
@@ -641,8 +648,9 @@ function optionTone(option: string): string {
             :key="option"
             type="button"
             data-practice-option
+            :data-tone="optionDataTone(option)"
             :disabled="revealed"
-            :class="`rounded-lg border px-3 py-2.5 text-left text-[12px] leading-relaxed text-slate-700 transition-colors disabled:cursor-default ${optionTone(option)}`"
+            :class="`rounded-lg border px-3 py-2.5 text-left text-[12px] leading-relaxed text-ink transition-colors disabled:cursor-default ${optionTone(option)}`"
             @click="choose(option)"
           >{{ option }}<CheckIcon v-if="revealed && option === current.correctOption" class-name="ml-1 inline h-3.5 w-3.5 align-[-2px] text-emerald-600" /><CloseIcon v-if="revealed && option === picked && option !== current.correctOption" class-name="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-500" /></button>
         </div>
@@ -661,15 +669,15 @@ function optionTone(option: string): string {
             <CloseIcon v-else class-name="h-3.5 w-3.5" />
             {{ answered ? '回答正确' : '回答错误' }}
           </span>
-          <span v-if="!answered" class="text-slate-700">
-            正确答案：<span class="font-medium text-slate-900">{{ correctText }}</span><span v-if="isSpelling && current.item.phonetic" class="ml-1.5 text-slate-400">/{{ current.item.phonetic }}/</span>
+          <span v-if="!answered" class="text-ink">
+            正确答案：<span class="font-medium text-ink">{{ correctText }}</span><span v-if="isSpelling && current.item.phonetic" class="ml-1.5 text-ink-3">/{{ current.item.phonetic }}/</span>
           </span>
           <button
             v-if="canSpeak"
             type="button"
             data-practice-speak
             title="朗读正确发音"
-            class="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600 transition-colors hover:bg-slate-50"
+            class="flex items-center gap-1 rounded border border-ink bg-white px-2 py-0.5 text-[11px] text-ink-2 transition-colors hover:bg-lemon-100"
             @click="speakEnglish(DISPLAY_NAME(current.item))"
           >
             <SpeakerIcon class-name="h-3 w-3" />
@@ -678,7 +686,7 @@ function optionTone(option: string): string {
           <button
             type="button"
             data-practice-next
-            class="ml-auto rounded-lg bg-slate-900 px-3.5 py-1.5 text-[12px] text-white transition-colors hover:bg-slate-700"
+            class="ml-auto rounded-lg bg-lemon-400 px-3.5 py-1.5 text-[12px] text-ink transition-colors hover:bg-lemon-300"
             @click="next"
           >
             {{ index + 1 >= questions.length ? '看结果' : '下一题' }}
@@ -687,7 +695,7 @@ function optionTone(option: string): string {
 
         <p
           v-if="isSpelling && !revealed && current.accept.length > 0"
-          class="mt-2 text-[11px] text-slate-400"
+          class="mt-2 text-[11px] text-ink-3"
         >
           {{
             isDictation
@@ -698,7 +706,7 @@ function optionTone(option: string): string {
 
         <p
           v-if="isDictation && revealed && (current.item.translation ?? '').trim()"
-          class="mt-2 text-[11px] leading-relaxed text-slate-400"
+          class="mt-2 text-[11px] leading-relaxed text-ink-3"
         >
           释义：{{ current.item.translation }}
         </p>
