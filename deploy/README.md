@@ -187,10 +187,16 @@ curl -s http://127.0.0.1:8000/api/health
 | 日志 | 位置 | 查看 |
 |---|---|---|
 | 服务 stdout/stderr | `/var/log/fayelong/service.log`、`service.err.log` | `tail -f /var/log/fayelong/service.err.log` |
-| systemd 单元日志 | journald | `journalctl -u fayelong -f` |
+| **worker 日志** | `/var/log/fayelong/worker.log`（unit 的 append 目标） | `journalctl -u fayelong-worker -f` |
+| **worker 应用日志** | `/opt/fayelong/data/logs/worker.log` | `tail -f /opt/fayelong/data/logs/worker.log` |
+| web 应用日志 | `/opt/fayelong/data/logs/app.log` | `tail -f /opt/fayelong/data/logs/app.log` |
+| systemd 单元日志 | journald | `journalctl -u fayelong -f` / `journalctl -u fayelong-worker -f` |
 | Caddy 访问日志 | `/var/log/caddy/fayelong-access.log` | `tail -f /var/log/caddy/fayelong-access.log` |
-| 应用内日志 | `/opt/fayelong/data/logs/` | — |
 | SS 进度 | 前端页面内展示 | `curl -N http://127.0.0.1:8000/api/media/<id>/progress` |
+
+> **两个进程的日志刻意分开**：web 写 `app.log`，worker 写 `worker.log`。两个进程同时
+> 对一个文件做 `RotatingFileHandler` 轮转，在 Windows 上会 `PermissionError`，
+> 在 Linux 上会互相覆盖（丢的正好是最有用的那一段）。
 
 ---
 
@@ -213,6 +219,7 @@ bash update.sh <含新代码的目录>      # 默认用当前目录
 
 - **代码回滚**：用 `update.sh` 结尾打印的命令，从 `/opt/fayelong/.backup/backend-<时间戳>` 恢复。
 - **指定版本重建**：重新上传上一版 `backend/` 与 `frontend/dist/`，跑一次 `update.sh`。
+- **退回「单进程全干」（P3-2 引入的双进程形态回滚）**：见 §十一.4。
 - **系统级回滚**：`systemctl stop fayelong` 停机排查；Caddy 配置回滚用 `/etc/caddy/Caddyfile.bak.<时间戳>`。
 - 回滚**不涉及数据**（data/ 从未被覆盖），因此学习记录始终可逆。
 
@@ -229,7 +236,8 @@ bash update.sh <含新代码的目录>      # 默认用当前目录
 | 模型下载失败 | 确认 `FAYELONG_HF_ENDPOINT=https://hf-mirror.com`（官方域名国内不可达） |
 | 服务起不来 | `journalctl -u fayelong -n 100 --no-pager`；确认 `WorkingDirectory` 与 `venv` 路径 |
 | 502 / Bad Gateway | 后端没起来：`systemctl status fayelong`；`curl 127.0.0.1:8000/api/health` |
-| 被 OOM Kill | `dmesg \| grep -i oom`；已设 `MemoryMax=1300M` + `Restart=on-failure`；转写任务**串行**执行 |
+| 被 OOM Kill | `dmesg \| grep -i oom`；web 上限 400M / worker 上限 1400M（见 §十一.3）；转写任务**串行**执行（`FAYELONG_JOB_CPU_THREADS=1`） |
+| 素材一直显示「排队中」 | worker 没在跑：`systemctl status fayelong-worker`；`tail -50 /opt/fayelong/data/logs/worker.log`；`curl -s 127.0.0.1:8000/api/health \| python3 -m json.tool` 看 `worker.online` 与 `jobs.pending` |
 | 端口占用 | `ss -ltnp \| grep -E ':80\|:8000'` |
 
 **红线**：不要停用/卸载 Caddy；不要动 22 与 ICMP 防火墙规则；不要重启/改配实例；不要触碰 `/home/ubuntu/.hermes`。
@@ -244,3 +252,79 @@ bash update.sh <含新代码的目录>      # 默认用当前目录
 | 加媒体素材 | 把音频/视频丢进 `/opt/fayelong/data/media/audio/`，页面「导入」即可 |
 | 换识别模型 | 改 `fayelong.service` 的 `FAYELONG_WHISPER_MODEL`，`systemctl daemon-reload && systemctl restart fayelong` |
 | 备份学习数据 | `tar -czf fel-data-$(date +%F).tar.gz /opt/fayelong/data` |
+
+---
+
+## 十一、双进程部署（P3-2 起：web + worker）
+
+### 11.1 两个 unit 各干什么
+
+| unit | 进程 | 干什么 | 不干什么 |
+|---|---|---|---|
+| `fayelong.service` | `uvicorn app.main:app` | 全部 `/api/*`、静态托管、SSE 进度推送 | **不执行**转码/识别/翻译/切片（`FAYELONG_WEB_INPROC_WORKER=off`） |
+| `fayelong-worker.service` | `python -m app.worker` | 消费 `jobs` 表：CPU 池（转码/识别/切片）+ IO 池（翻译） | 不监听端口 |
+
+为什么拆：
+
+1. **G3-③「ASR 不阻塞翻译」**：一条 `transcode→asr→translate→clip` 链被拆成 4 个
+   stage job，每个 stage 自带池归属。翻译走 IO 池，长 ASR 期间它照跑。
+2. **内存**：`services/asr.py` 是延迟导入 + 任务只在 worker 里执行 →
+   **whisper 模型只在 worker 进程加载**。2GB 实例上 web 常驻从「≈1.1 GB」降到
+   「≈150 MB」，总占用反而比拆分前更低。
+3. **崩了不互相拖累**：worker 被 kill 后，它手上的任务租约过期后由新 worker（或
+   web 的 `auto` 兜底）接管，`jobs.attempts` 记录尝试次数，最多 3 次。
+
+### 11.2 安装 / 启停
+
+```bash
+cd /opt/fayelong/deploy/linux
+bash install.sh service          # 同时安装并启动两个 unit
+systemctl status fayelong fayelong-worker
+journalctl -u fayelong-worker -f
+```
+
+两个 unit 的启动顺序**随便**：`off` 模式下 web 不干活；`auto` 模式下 web 会兜底。
+`fayelong-worker.service` 刻意**没有** `After=fayelong.service` —— worker 不该等 web。
+
+### 11.3 内存上限（是**上限**，不是预留）
+
+| unit | 软限 `MemoryHigh` | 硬限 `MemoryMax` |
+|---|---|---|
+| `fayelong.service`（web） | 300M | **400M** |
+| `fayelong-worker.service` | 1000M | **1400M** |
+
+合计上限 1800M < 2GB，留 200M 给系统/Caddy。
+
+> ⚠️ **上线后必须实测回填**：这两组数是按「web 不加载模型 + whisper small int8
+> 常驻 ≈ 1.0 GB」估的，没有在 2 vCPU 实机上验证过。跑 2～3 个真实素材后执行
+> `systemd-cgtop -1`（或 `systemd-cgtop` 观察 10 分钟），看
+> `/system.slice/fayelong.service` 与 `/system.slice/fayelong-worker.service` 的
+> `Memory` 列，把 `MemoryMax` 调到「实测峰值 × 1.2」再 `daemon-reload + restart`。
+> 若 worker 峰值 > 1400M：先把 `FAYELONG_WHISPER_MODEL` 换成 `base`
+> （见 §五.1），而不是盲目抬高上限（抬到 1500M 以上就会和 web 抢同一块 2GB）。
+
+### 11.4 回滚到「单进程全干」（旧行为）
+
+```bash
+systemctl disable --now fayelong-worker
+# 把 fayelong.service 里的 FAYELONG_WEB_INPROC_WORKER=off 改成 auto（或 on）
+systemctl daemon-reload
+systemctl restart fayelong
+```
+
+- `auto`：web 5s 后检查 `workers` 表，没有在线 worker 就自己接管（任务仍会完成，只是慢）；
+- `on`：web 无条件执行任务（等价于 P3-2 之前的行为）。
+
+两个执行者同时存在也**不会双跑**：执行权靠 `jobs` 表的原子 claim（`UPDATE ...
+WHERE status='pending'` + `rowcount==1`）+ `attempts` 作 fencing token。
+
+### 11.5 自检要点
+
+```bash
+curl -s 127.0.0.1:8000/api/health | python3 -m json.tool
+```
+
+- `worker.online` 必须为 `true`，`worker.count` 应为 **1**（`>1` 说明有孤儿 worker）；
+- `worker.last_heartbeat_at` 应在 30s 内（否则 worker 心跳停了）；
+- `jobs.pending` 长期 > 0 且 `jobs.running == 0` → worker 没在消费，看
+  `journalctl -u fayelong-worker`。

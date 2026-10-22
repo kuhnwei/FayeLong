@@ -97,6 +97,22 @@ class CDP {
     return res.result.value
   }
 
+  /** 轮询求值直到为真；超时返回 null（不抛），便于记录实际观察值。 */
+  async waitValue(expression, timeout = 8000, step = 80) {
+    const t0 = Date.now()
+    for (;;) {
+      let v = null
+      try {
+        v = await this.evaluate(expression)
+      } catch {
+        v = null
+      }
+      if (v) return v
+      if (Date.now() - t0 > timeout) return null
+      await sleep(80)
+    }
+  }
+
   close() {
     try {
       this.ws.close()
@@ -269,6 +285,115 @@ async function main() {
     record('第一次点击设定 A 点', Boolean(abProbe?.step1), abProbe?.step1 ?? '未进入设 B 状态')
     record('第二次点击设定 B 点并进入循环', Boolean(abProbe?.step2) && Boolean(abProbe?.abActive), abProbe?.step2 ?? '')
     record('第三次点击清除 A-B', Boolean(abProbe?.step3), abProbe?.step3 ?? '')
+
+    // ---------- 2b. 键盘不劫持 / 草稿跨页 / 宫格着色三分 ----------
+    // （v1.12 一句一页的关键语义；此前只有代码自查、无脚本证据）
+    const keyPress = async (key, vk) => {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key, windowsVirtualKeyCode: vk })
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, windowsVirtualKeyCode: vk })
+    }
+    const idxTextExpr = `(document.body.innerText.match(/第 \\d+ \\/ \\d+ 句/) || [''])[0]`
+
+    // B9 键盘不劫持：焦点在听写输入框里按 →，光标右移、**页面不翻句**
+    const kbBefore = await cdp.evaluate(`(() => { ${HELPERS}
+      const ta = document.querySelector('[data-testid="dictation-input"]');
+      if (!ta) return { error: '未找到听写输入框' };
+      const setS = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      setS.call(ta, 'keyboard probe text');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.focus();
+      ta.setSelectionRange(5, 5);
+      return { idxText: ${idxTextExpr}, sel: ta.selectionStart, focused: document.activeElement === ta };
+    })()`)
+    await keyPress('ArrowRight', 39)
+    const kbAfter = await cdp.evaluate(`(() => {
+      const ta = document.querySelector('[data-testid="dictation-input"]');
+      return { idxText: ${idxTextExpr}, sel: ta ? ta.selectionStart : null, focused: document.activeElement === ta };
+    })()`)
+    record(
+      'B9 焦点在听写输入框内按 →：光标右移且页面不翻句',
+      Boolean(kbBefore?.focused) &&
+        kbAfter?.focused === true &&
+        kbAfter?.sel === (kbBefore?.sel ?? 0) + 1 &&
+        kbAfter?.idxText === kbBefore?.idxText,
+      `sel ${kbBefore?.sel}→${kbAfter?.sel} 页码 "${kbBefore?.idxText}"→"${kbAfter?.idxText}"`,
+    )
+
+    // 对照组：焦点离开输入框后按 →，应当翻句
+    await cdp.evaluate(`(() => { const el = document.activeElement; if (el && el.blur) el.blur(); })()`)
+    await keyPress('ArrowRight', 39)
+    const kbNav = await cdp.evaluate(`(() => ({ idxText: ${idxTextExpr} }))()`)
+    record(
+      'B9 对照组：焦点不在输入框时按 → 应翻句',
+      kbNav?.idxText !== kbBefore?.idxText,
+      `"${kbBefore?.idxText}"→"${kbNav?.idxText}"`,
+    )
+    await keyPress('ArrowLeft', 37) // 回到第 1 句，避免影响后续断言
+
+    // B10 草稿跨页：句 1 输入 → 宫格跳到句 4 → 再跳回 → 草稿仍在
+    const draftStamp = `draft-${Date.now()}`
+    await cdp.evaluate(`(() => { ${HELPERS}
+      const ta = document.querySelector('[data-testid="dictation-input"]');
+      const setS = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      setS.call(ta, ${JSON.stringify(`pre ${draftStamp} post`)});
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`)
+    // 舞台左上角的 `#N` 随翻页变化（**在点击前**读基线；不写死句数，句数因媒体而异）
+    const stageIdxExpr = `(document.querySelector('[data-testid="sentence-stage-card"] span') || {}).textContent?.trim() || ''`
+    const beforeIdx = await cdp.evaluate(stageIdxExpr)
+    await cdp.evaluate(`(() => { ${HELPERS}
+      const grid = document.querySelector('[data-testid="sentence-grid"]');
+      const cells = grid ? [...grid.querySelectorAll('button')] : [];
+      if (cells[3]) cells[3].click();           // 跳到第 4 句
+      return true;
+    })()`)
+    const away = await cdp.waitValue(
+      `(() => { const v = ${stageIdxExpr}; return v && v !== ${JSON.stringify(beforeIdx)} ? v : null; })()`,
+      8000,
+    )
+    await cdp.evaluate(`(() => { ${HELPERS}
+      const grid = document.querySelector('[data-testid="sentence-grid"]');
+      const cells = grid ? [...grid.querySelectorAll('button')] : [];
+      if (cells[0]) cells[0].click();           // 跳回第 1 句
+      return true;
+    })()`)
+    const back = await cdp.waitValue(`${stageIdxExpr} === '#1'`, 8000)
+    const draftNow = await cdp.evaluate(
+      `document.querySelector('[data-testid="dictation-input"]')?.value ?? ''`,
+    )
+    record(
+      'B10 草稿跨页保留：跳走再跳回，输入仍在',
+      Boolean(away) && Boolean(back) && draftNow.includes(draftStamp),
+      `away=${!!away} back=${!!back} value="${draftNow.slice(0, 60)}"`,
+    )
+    // 清理草稿，避免影响后续断言
+    await cdp.evaluate(`(() => { ${HELPERS}
+      const ta = document.querySelector('[data-testid="dictation-input"]');
+      const setS = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      setS.call(ta, '');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`)
+
+    // 宫格着色三分：当前 > 已掌握 > 练过 > 未听（active 恰 1 个；其余至少出现两种状态）
+    const grid = await cdp.evaluate(`(() => { ${HELPERS}
+      const gridEl = document.querySelector('[data-testid="sentence-grid"]');
+      const cells = gridEl ? [...gridEl.querySelectorAll('button')] : [];
+      return {
+        total: cells.length,
+        active: cells.filter((b) => b.className.includes('bg-slate-900')).length,
+        mastered: cells.filter((b) => b.className.includes('bg-emerald-100')).length,
+        attempted: cells.filter((b) => b.className.includes('bg-amber-100')).length,
+        fresh: cells.filter((b) => b.className.includes('bg-slate-100')).length,
+      };
+    })()`)
+    const distinctStates = [grid?.mastered, grid?.attempted, grid?.fresh].filter((n) => n > 0).length
+    record(
+      '宫格着色三分：active 恰 1 个，其余至少两种状态可区分',
+      grid?.total > 0 && grid?.active === 1 && distinctStates >= 2 && grid?.mastered + grid?.attempted + grid?.fresh === grid?.total - 1,
+      `total=${grid?.total} active=${grid?.active} 掌握=${grid?.mastered} 练过=${grid?.attempted} 未听=${grid?.fresh}`,
+    )
 
     // ---------- 3. 学习页：笔记汇总面板 ----------
     const panelProbe = await cdp.evaluate(`(async () => {

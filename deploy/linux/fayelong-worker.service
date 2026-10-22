@@ -1,0 +1,52 @@
+[Unit]
+Description=FayeLong 任务执行进程（jobs 唯一执行者：转码 / 识别 / 翻译 / 切片）
+Documentation=file:/opt/fayelong/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+# ⚠️ 刻意**不**写 After=fayelong.service：worker 不该等 web。
+#   两个方向都安全 —— web 若是 off 模式就不干活，worker 先起来只会尽快开始消费任务；
+#   反之 auto 模式下 web 会兜底，谁先起都不会双跑（claim 是 DB 原子操作 + fencing）。
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/fayelong/backend
+
+# ---- 运行时环境（只列变量名与用途，值均为非机密）----
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# ★ 容量：2 vCPU 机器上 CPU 池必须显式设为 1。
+#   默认 job_cpu_threads=0 表示「自动取 os.cpu_count()」→ 2 vCPU 会取 2，
+#   于是 ASR 与 ffmpeg 抢核，整体反而更慢。
+Environment=FAYELONG_JOB_CPU_THREADS=1
+# IO 池（在线翻译）：免费引擎按 IP 限流，4 已是上限，不要调大。
+Environment=FAYELONG_JOB_IO_THREADS=4
+
+# worker 自己绝不执行「进程内兜底」——那是 web 侧的责任。
+Environment=FAYELONG_WEB_INPROC_WORKER=off
+
+# 语音识别默认规格：small（用户决策，准确率优先）。详见 deploy/README.md §5.1
+Environment=FAYELONG_WHISPER_MODEL=small
+Environment=FAYELONG_WHISPER_COMPUTE_TYPE=int8
+Environment=FAYELONG_HF_ENDPOINT=https://hf-mirror.com
+
+ExecStart=/opt/fayelong/venv/bin/python -m app.worker
+
+# 崩了就拉起来（任务本身由 jobs 的 attempts 兜住，最多 3 次后置 failed，不会死循环）
+Restart=on-failure
+RestartSec=5
+
+# ---- 内存上限（是**上限**，不是预留）----
+# 依据：whisper small int8 常驻 + 转码/切片峰值。web 侧现在不再加载模型，
+# 因此「web + worker」总占用应低于拆分前的单进程形态。
+# ⚠️ 上线后**必须**用 `systemd-cgtop -1`（或 `systemd-cgtop` 观察 10 分钟）
+#    实测一次真实 RSS，再把下面两个数字回填定稿（见 deploy/README.md §X.3）。
+MemoryHigh=1000M
+MemoryMax=1400M
+
+StandardOutput=append:/var/log/fayelong/worker.log
+StandardError=append:/var/log/fayelong/worker.log
+
+[Install]
+WantedBy=multi-user.target

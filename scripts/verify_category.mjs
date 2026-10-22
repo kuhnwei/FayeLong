@@ -20,7 +20,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { copyFileSync, mkdtempSync, mkdirSync, existsSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { installSessionInBrowser, patchFetchForSession } from './lib/session.mjs'
 
 const argv = process.argv.slice(2)
@@ -262,17 +262,20 @@ async function main() {
   let lastDialog = null
 
   // ---- C0：备份 + 基线快照 ----
+  // 备份目录**跟随 --db**：默认（真实库）→ `<repo>/data/backups/`（与旧行为一致）；
+  // 对隔离实例跑时（--db 指向副本）→ `<副本目录>/backups/`，**绝不**在真实 data/backups/
+  // 里留下「内容其实是隔离库」的误导性文件。
   try {
-    const backupsDir = join(process.cwd(), 'data', 'backups')
+    const backupsDir = join(dirname(DB_PATH), 'backups')
     if (!existsSync(backupsDir)) mkdirSync(backupsDir, { recursive: true })
     const stamp = new Date()
       .toISOString()
       .replace(/[-:T]/g, '')
       .slice(0, 14)
     copyFileSync(DB_PATH, join(backupsDir, `app.db.qa-cat-${stamp}.bak`))
-    record('C0 备份 data/app.db 到 data/backups/', true, `app.db.qa-cat-${stamp}.bak`)
+    record('C0 备份被测库到 <db目录>/backups/', true, `${join(backupsDir, `app.db.qa-cat-${stamp}.bak`)}（db=${DB_PATH}）`)
   } catch (err) {
-    record('C0 备份 data/app.db 到 data/backups/', false, String(err?.message ?? err))
+    record('C0 备份被测库到 <db目录>/backups/', false, String(err?.message ?? err))
   }
 
   try {
@@ -705,6 +708,40 @@ async function main() {
       'B11 批量管理：勾选 2 项并移动 → notice 文案正确',
       batchProbe?.selected === 2 && /已移动 2 个素材到「VOA」/.test(batchProbe?.notice ?? ''),
       `selected=${batchProbe?.selected} notice=${batchProbe?.notice ?? batchProbe?.error} exited=${batchProbe?.exited}`,
+    )
+
+    // ---- B11b：批量移动菜单的选项集 = ['未分类', ...各分类]（**文本 + 顺序**都断言）----
+    // 「移回未分类」的唯一表达是 category_id: null，菜单里的「未分类」项是它的唯一入口；
+    // 若被删掉，素材就再也回不去未分类了 —— 必须有用例咬住（QA 变异实测原套件抓不住）。
+    const moveMenuProbe = await cdp.evaluate(`(async () => { ${HELPERS}
+      const allChip = [...chipGroup().querySelectorAll('button')].find((b) => b.textContent.trim().startsWith('全部'));
+      allChip.click();
+      await sleep(800);
+      const batch = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '批量管理');
+      batch.click();
+      await sleep(300);
+      const row = findRowByTitle(${JSON.stringify(titleOf(mA))});
+      if (!row) return { error: '未找到目标行' };
+      row.querySelector('input[type=checkbox]').click();
+      await sleep(200);
+      const moveBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('移动到分类'));
+      moveBtn.click();
+      const menu = await waitFor(() => document.querySelector('div[role="menu"]'), 4000);
+      if (!menu) return { error: '菜单未打开' };
+      const opts = [...menu.querySelectorAll('button[role="menuitem"]')].map((b) => b.textContent.trim());
+      // 收起菜单并退出批量，避免影响后续用例
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(300);
+      const exit = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '退出批量');
+      if (exit) exit.click();
+      await sleep(300);
+      return { opts };
+    })()`)
+    const expectedMoveOpts = ['未分类', ...((await req('/api/categories')).body?.items ?? []).map((c) => c.name)]
+    check(
+      'B11b 批量移动菜单选项集恰为 [未分类, ...各分类]（含顺序）',
+      Array.isArray(moveMenuProbe?.opts) && JSON.stringify(moveMenuProbe.opts) === JSON.stringify(expectedMoveOpts),
+      `菜单=${JSON.stringify(moveMenuProbe?.opts ?? moveMenuProbe?.error)} 期望=${JSON.stringify(expectedMoveOpts)}`,
     )
 
     // ---- B12：删除分类 → 素材回落未分类，确认文案明示不删素材 ----

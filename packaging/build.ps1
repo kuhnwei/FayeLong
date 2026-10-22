@@ -353,11 +353,14 @@ Good "前端产物 -> static\（$(Format-Size (Get-TreeSize (Join-Path $Stage 's
 
 $null = New-Item -ItemType Directory -Force -Path $ScriptsIn
 Copy-FileSafe -Source (Join-Path $Pack 'launcher.py')  -Target (Join-Path $ScriptsIn 'launcher.py')
+# worker 启动垫片：embeddable Python 忽略 PYTHONPATH，`python -m app.worker` 在
+# 交付包形态下必然 No module named 'app'（详见 packaging/worker_entry.py）。
+Copy-FileSafe -Source (Join-Path $Pack 'worker_entry.py') -Target (Join-Path $ScriptsIn 'worker_entry.py')
 Copy-FileSafe -Source (Join-Path $Pack 'bootstrap.py') -Target (Join-Path $ScriptsIn 'bootstrap.py')
 Copy-FileSafe -Source (Join-Path $Pack 'update.py')    -Target (Join-Path $ScriptsIn 'update.py')
 Copy-FileSafe -Source (Join-Path $Root 'backend\scripts\selftest.py')   -Target (Join-Path $ScriptsIn 'selftest.py')
 Copy-FileSafe -Source (Join-Path $Root 'backend\scripts\fetch_dict.py') -Target (Join-Path $ScriptsIn 'fetch_dict.py')
-Good '启动器 / 自检 / 资源下载 / 就地更新脚本 -> scripts\'
+Good '启动器 / worker 垫片 / 自检 / 资源下载 / 就地更新脚本 -> scripts\'
 
 # ---------------------------------------------------------------- 7 数据
 

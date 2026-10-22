@@ -1,0 +1,3624 @@
+{
+  "components": {
+    "schemas": {
+      "AttemptCreate": {
+        "description": "提交一次听写。",
+        "properties": {
+          "input": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Input",
+            "type": "string"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sentence_id"
+        ],
+        "title": "AttemptCreate",
+        "type": "object"
+      },
+      "AttemptListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AttemptListResponse",
+        "type": "object"
+      },
+      "AttemptRecord": {
+        "description": "一条历史听写记录（含词级明细）。\n\n词级明细（`tokens` 与四类计数）是**读取时按当前原文实时重算的复盘视图**，\n并不落库（`attempts` 表只追加、不存明细）；而 `accuracy` / `is_correct`\n取的是**提交当时写入数据库的历史值**，因此若原文后来被校对改过，\n明细的比对基准是当前原文，成绩仍是历史值，二者可能不一致——这是有意为之。",
+        "properties": {
+          "accuracy": {
+            "title": "Accuracy",
+            "type": "number"
+          },
+          "correct": {
+            "default": 0,
+            "title": "Correct",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "extra": {
+            "default": 0,
+            "title": "Extra",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "is_correct": {
+            "title": "Is Correct",
+            "type": "boolean"
+          },
+          "missing": {
+            "default": 0,
+            "title": "Missing",
+            "type": "integer"
+          },
+          "tokens": {
+            "items": {
+              "$ref": "#/components/schemas/DiffToken"
+            },
+            "title": "Tokens",
+            "type": "array"
+          },
+          "total_words": {
+            "default": 0,
+            "title": "Total Words",
+            "type": "integer"
+          },
+          "wrong": {
+            "default": 0,
+            "title": "Wrong",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "input",
+          "accuracy",
+          "is_correct",
+          "created_at"
+        ],
+        "title": "AttemptRecord",
+        "type": "object"
+      },
+      "AttemptResult": {
+        "description": "一次听写的校验结果 + 该句累计统计。",
+        "properties": {
+          "accuracy": {
+            "title": "Accuracy",
+            "type": "number"
+          },
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "integer"
+          },
+          "best_accuracy": {
+            "default": 0.0,
+            "title": "Best Accuracy",
+            "type": "number"
+          },
+          "correct": {
+            "default": 0,
+            "title": "Correct",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "extra": {
+            "default": 0,
+            "title": "Extra",
+            "type": "integer"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "is_correct": {
+            "title": "Is Correct",
+            "type": "boolean"
+          },
+          "mastered": {
+            "default": false,
+            "title": "Mastered",
+            "type": "boolean"
+          },
+          "missing": {
+            "default": 0,
+            "title": "Missing",
+            "type": "integer"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "integer"
+          },
+          "tokens": {
+            "items": {
+              "$ref": "#/components/schemas/DiffToken"
+            },
+            "title": "Tokens",
+            "type": "array"
+          },
+          "total_words": {
+            "default": 0,
+            "title": "Total Words",
+            "type": "integer"
+          },
+          "wrong": {
+            "default": 0,
+            "title": "Wrong",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sentence_id",
+          "attempt_id",
+          "input",
+          "accuracy",
+          "is_correct",
+          "created_at"
+        ],
+        "title": "AttemptResult",
+        "type": "object"
+      },
+      "AttemptStatsOut": {
+        "properties": {
+          "attempted_sentences": {
+            "default": 0,
+            "title": "Attempted Sentences",
+            "type": "integer"
+          },
+          "mastered_sentences": {
+            "default": 0,
+            "title": "Mastered Sentences",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "AttemptStatsOut",
+        "type": "object"
+      },
+      "AuthStatus": {
+        "description": "前端启动时最先拉取的鉴权状态。",
+        "properties": {
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "min_password_length": {
+            "default": 8,
+            "title": "Min Password Length",
+            "type": "integer"
+          },
+          "needs_setup": {
+            "title": "Needs Setup",
+            "type": "boolean"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "needs_setup",
+          "authenticated"
+        ],
+        "title": "AuthStatus",
+        "type": "object"
+      },
+      "BatchCategoryRequest": {
+        "description": "批量把素材移动到某个分类。\n\n`category_id` **必填**（规格 §3.2b）：显式传 `null` = 移到「未分类」，\n从而区分「有意移到未分类」与「客户端漏传」。",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "category_id"
+        ],
+        "title": "BatchCategoryRequest",
+        "type": "object"
+      },
+      "Body_upload_media_api_media_post": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_media_api_media_post",
+        "type": "object"
+      },
+      "CategoryCreate": {
+        "description": "新建分类。",
+        "properties": {
+          "name": {
+            "maxLength": 32,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CategoryCreate",
+        "type": "object"
+      },
+      "CategoryListResponse": {
+        "description": "分类列表 + 「未分类」计数。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "uncategorized_count": {
+            "title": "Uncategorized Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "uncategorized_count"
+        ],
+        "title": "CategoryListResponse",
+        "type": "object"
+      },
+      "CategoryOut": {
+        "description": "单个分类。",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "media_count": {
+            "title": "Media Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sort_order",
+          "media_count",
+          "created_at"
+        ],
+        "title": "CategoryOut",
+        "type": "object"
+      },
+      "CategoryReorder": {
+        "description": "提交整份分类顺序。ids 必须是当前全部分类 id 的完整有序集合。",
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "CategoryReorder",
+        "type": "object"
+      },
+      "CategoryUpdate": {
+        "description": "重命名分类（本轮只允许改 name）。",
+        "properties": {
+          "name": {
+            "maxLength": 32,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CategoryUpdate",
+        "type": "object"
+      },
+      "Credentials": {
+        "properties": {
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Credentials",
+        "type": "object"
+      },
+      "DictForm": {
+        "description": "词形变化的一项，如 `过去式：went`。",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "DictForm",
+        "type": "object"
+      },
+      "DictResult": {
+        "description": "一次查词的结果。\n\n- `found=False` 时 `notice` 会给出原因（未安装词库 / 未收录），前端据此展示。\n- `lemma` 非空表示查询词是变形，已还原到原型（`word` 为原型）。",
+        "properties": {
+          "collins": {
+            "default": 0,
+            "title": "Collins",
+            "type": "integer"
+          },
+          "definition": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Definition",
+            "type": "array"
+          },
+          "exchange": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Exchange",
+            "type": "object"
+          },
+          "forms": {
+            "items": {
+              "$ref": "#/components/schemas/DictForm"
+            },
+            "title": "Forms",
+            "type": "array"
+          },
+          "found": {
+            "default": false,
+            "title": "Found",
+            "type": "boolean"
+          },
+          "lemma": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lemma"
+          },
+          "longman_url": {
+            "default": "",
+            "title": "Longman Url",
+            "type": "string"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          },
+          "oxford": {
+            "default": 0,
+            "title": "Oxford",
+            "type": "integer"
+          },
+          "oxford_url": {
+            "default": "",
+            "title": "Oxford Url",
+            "type": "string"
+          },
+          "phonetic": {
+            "default": "",
+            "title": "Phonetic",
+            "type": "string"
+          },
+          "pos": {
+            "default": "",
+            "title": "Pos",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "source": {
+            "default": "ecdict",
+            "title": "Source",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "translation": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Translation",
+            "type": "array"
+          },
+          "via": {
+            "default": "",
+            "title": "Via",
+            "type": "string"
+          },
+          "word": {
+            "default": "",
+            "title": "Word",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "DictResult",
+        "type": "object"
+      },
+      "DictationSummary": {
+        "description": "整个媒体的听写进度汇总（学习页头部）。",
+        "properties": {
+          "attempted": {
+            "default": 0,
+            "title": "Attempted",
+            "type": "integer"
+          },
+          "avg_best_accuracy": {
+            "default": 0.0,
+            "title": "Avg Best Accuracy",
+            "type": "number"
+          },
+          "mastered": {
+            "default": 0,
+            "title": "Mastered",
+            "type": "integer"
+          },
+          "sentences": {
+            "default": 0,
+            "title": "Sentences",
+            "type": "integer"
+          },
+          "total_attempts": {
+            "default": 0,
+            "title": "Total Attempts",
+            "type": "integer"
+          }
+        },
+        "title": "DictationSummary",
+        "type": "object"
+      },
+      "DiffToken": {
+        "description": "对齐结果中的一个位置。\n\n- `correct`：正常色，`expected == actual`\n- `wrong`  ：标红，显示用户写的 `actual`，`expected` 为正确形式\n- `missing`：红色下划线，显示 `expected`（用户漏掉的词）\n- `extra`  ：灰色删除线，只显示 `actual`（用户多写的词）",
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected"
+          },
+          "type": {
+            "enum": [
+              "correct",
+              "wrong",
+              "missing",
+              "extra"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "DiffToken",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportRequest": {
+        "description": "从收件箱导入；files 为空表示导入全部未导入的受支持文件。",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "files": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files"
+          }
+        },
+        "title": "ImportRequest",
+        "type": "object"
+      },
+      "InboxItem": {
+        "properties": {
+          "ext": {
+            "title": "Ext",
+            "type": "string"
+          },
+          "imported": {
+            "title": "Imported",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "ext",
+          "supported",
+          "size_bytes",
+          "imported"
+        ],
+        "title": "InboxItem",
+        "type": "object"
+      },
+      "InboxResponse": {
+        "properties": {
+          "inbox_dir": {
+            "title": "Inbox Dir",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "inbox_dir",
+          "items"
+        ],
+        "title": "InboxResponse",
+        "type": "object"
+      },
+      "MediaDetailOut": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dictation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DictationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "has_audio": {
+            "title": "Has Audio",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "original_name": {
+            "title": "Original Name",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "sentence_count": {
+            "default": 0,
+            "title": "Sentence Count",
+            "type": "integer"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceOut"
+            },
+            "title": "Sentences",
+            "type": "array"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stream_url": {
+            "title": "Stream Url",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "type",
+          "original_name",
+          "duration_ms",
+          "size_bytes",
+          "status",
+          "progress",
+          "origin",
+          "created_at",
+          "has_audio",
+          "stream_url"
+        ],
+        "title": "MediaDetailOut",
+        "type": "object"
+      },
+      "MediaListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MediaOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "MediaListResponse",
+        "type": "object"
+      },
+      "MediaNoteItem": {
+        "description": "汇总面板 / 导出里的一个条目：句子 + 笔记 + 听写概要。",
+        "properties": {
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "best_accuracy": {
+            "default": 0.0,
+            "title": "Best Accuracy",
+            "type": "number"
+          },
+          "content": {
+            "default": "",
+            "title": "Content",
+            "type": "string"
+          },
+          "idx": {
+            "title": "Idx",
+            "type": "integer"
+          },
+          "mastered": {
+            "default": false,
+            "title": "Mastered",
+            "type": "boolean"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "integer"
+          },
+          "text_en": {
+            "default": "",
+            "title": "Text En",
+            "type": "string"
+          },
+          "text_zh": {
+            "default": "",
+            "title": "Text Zh",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "sentence_id",
+          "idx"
+        ],
+        "title": "MediaNoteItem",
+        "type": "object"
+      },
+      "MediaNotesResponse": {
+        "description": "某个媒体的全部句子笔记（按句序）。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MediaNoteItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "media_id": {
+            "title": "Media Id",
+            "type": "integer"
+          },
+          "sentence_count": {
+            "default": 0,
+            "title": "Sentence Count",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id",
+          "title"
+        ],
+        "title": "MediaNotesResponse",
+        "type": "object"
+      },
+      "MediaOut": {
+        "description": "媒体列表项。",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "has_audio": {
+            "title": "Has Audio",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "original_name": {
+            "title": "Original Name",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "sentence_count": {
+            "default": 0,
+            "title": "Sentence Count",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stream_url": {
+            "title": "Stream Url",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "type",
+          "original_name",
+          "duration_ms",
+          "size_bytes",
+          "status",
+          "progress",
+          "origin",
+          "created_at",
+          "has_audio",
+          "stream_url"
+        ],
+        "title": "MediaOut",
+        "type": "object"
+      },
+      "MediaStatsOut": {
+        "properties": {
+          "done": {
+            "default": 0,
+            "title": "Done",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "processing": {
+            "default": 0,
+            "title": "Processing",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "MediaStatsOut",
+        "type": "object"
+      },
+      "MediaUpdate": {
+        "description": "PATCH 单个媒体：仅传需要修改的字段。\n\n`category_id` 用于归类：显式传 `null` = 移到「未分类」；\n「未传」与「传 null」由 `model_fields_set` 区分（见 app/api/media.py）。",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "MediaUpdate",
+        "type": "object"
+      },
+      "NoteOut": {
+        "description": "一句的笔记（每句至多一条）。",
+        "properties": {
+          "content": {
+            "default": "",
+            "title": "Content",
+            "type": "string"
+          },
+          "exists": {
+            "default": false,
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "sentence_id"
+        ],
+        "title": "NoteOut",
+        "type": "object"
+      },
+      "NoteUpsert": {
+        "description": "保存句子笔记。内容为空字符串表示删除该笔记。",
+        "properties": {
+          "content": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "title": "NoteUpsert",
+        "type": "object"
+      },
+      "PasswordChange": {
+        "properties": {
+          "current_password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "PasswordChange",
+        "type": "object"
+      },
+      "QuestionTypeListOut": {
+        "description": "`GET /api/question-types` 的响应体；注册表为空时 `types == []`。",
+        "properties": {
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypeOut"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "title": "QuestionTypeListOut",
+        "type": "object"
+      },
+      "QuestionTypeOut": {
+        "description": "一个题型的契约四元组。",
+        "properties": {
+          "code": {
+            "description": "题型标识，与前端 question-types 目录同名",
+            "title": "Code",
+            "type": "string"
+          },
+          "grade_mode": {
+            "description": "判分模式：sync=纯函数就地判分；async=入 jobs 表由 IO 池判分",
+            "enum": [
+              "sync",
+              "async"
+            ],
+            "title": "Grade Mode",
+            "type": "string"
+          },
+          "label": {
+            "description": "中文展示名（为空时后端已按 code 兜底）",
+            "title": "Label",
+            "type": "string"
+          },
+          "requires_external": {
+            "default": false,
+            "description": "判分是否依赖外部服务；为真时前端应展示降级提示",
+            "title": "Requires External",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "grade_mode"
+        ],
+        "title": "QuestionTypeOut",
+        "type": "object"
+      },
+      "SentenceMergeIn": {
+        "description": "与相邻句合并。",
+        "properties": {
+          "direction": {
+            "default": "next",
+            "enum": [
+              "next",
+              "prev"
+            ],
+            "title": "Direction",
+            "type": "string"
+          }
+        },
+        "title": "SentenceMergeIn",
+        "type": "object"
+      },
+      "SentenceOut": {
+        "description": "句子（M2 起才会有数据；听写统计字段由 M3 填充）。",
+        "properties": {
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "best_accuracy": {
+            "default": 0.0,
+            "title": "Best Accuracy",
+            "type": "number"
+          },
+          "clip_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip Url"
+          },
+          "end_ms": {
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "idx": {
+            "title": "Idx",
+            "type": "integer"
+          },
+          "is_edited": {
+            "title": "Is Edited",
+            "type": "boolean"
+          },
+          "last_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Accuracy"
+          },
+          "last_input": {
+            "default": "",
+            "title": "Last Input",
+            "type": "string"
+          },
+          "marks": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Marks",
+            "type": "array"
+          },
+          "mastered": {
+            "default": false,
+            "title": "Mastered",
+            "type": "boolean"
+          },
+          "start_ms": {
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "text_en": {
+            "title": "Text En",
+            "type": "string"
+          },
+          "text_zh": {
+            "title": "Text Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "idx",
+          "start_ms",
+          "end_ms",
+          "text_en",
+          "text_zh",
+          "is_edited"
+        ],
+        "title": "SentenceOut",
+        "type": "object"
+      },
+      "SentenceSplitIn": {
+        "description": "在 `at_ms` 处把一句拆成两句。",
+        "properties": {
+          "at_ms": {
+            "title": "At Ms",
+            "type": "integer"
+          },
+          "text_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Left"
+          },
+          "text_right": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Right"
+          }
+        },
+        "required": [
+          "at_ms"
+        ],
+        "title": "SentenceSplitIn",
+        "type": "object"
+      },
+      "SentenceUpdate": {
+        "description": "PATCH 单句：仅传需要修改的字段（FR-M6 人工校对）。",
+        "properties": {
+          "end_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Ms"
+          },
+          "marks": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marks"
+          },
+          "start_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Ms"
+          },
+          "text_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text En"
+          },
+          "text_zh": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Zh"
+          }
+        },
+        "title": "SentenceUpdate",
+        "type": "object"
+      },
+      "StatsOut": {
+        "description": "全局学习概览。",
+        "properties": {
+          "attempts": {
+            "$ref": "#/components/schemas/AttemptStatsOut"
+          },
+          "media": {
+            "$ref": "#/components/schemas/MediaStatsOut"
+          },
+          "notes": {
+            "default": 0,
+            "title": "Notes",
+            "type": "integer"
+          },
+          "sentences": {
+            "default": 0,
+            "title": "Sentences",
+            "type": "integer"
+          },
+          "vocab": {
+            "$ref": "#/components/schemas/VocabStatsOut"
+          }
+        },
+        "required": [
+          "media",
+          "vocab",
+          "attempts"
+        ],
+        "title": "StatsOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VocabCreate": {
+        "description": "加入生词本。\n\n`context` 为出现该词的上下文句子，`media_id` / `sentence_id` 用于溯源。",
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "lemma": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lemma"
+          },
+          "media_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Id"
+          },
+          "phonetic": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phonetic"
+          },
+          "sentence_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence Id"
+          },
+          "translation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translation"
+          },
+          "word": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Word",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word"
+        ],
+        "title": "VocabCreate",
+        "type": "object"
+      },
+      "VocabListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VocabOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "mastered": {
+            "default": 0,
+            "title": "Mastered",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "VocabListResponse",
+        "type": "object"
+      },
+      "VocabOut": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duplicated": {
+            "default": false,
+            "title": "Duplicated",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "lemma": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lemma"
+          },
+          "mastered": {
+            "default": false,
+            "title": "Mastered",
+            "type": "boolean"
+          },
+          "media_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Id"
+          },
+          "media_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Title"
+          },
+          "phonetic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phonetic"
+          },
+          "sentence_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence Id"
+          },
+          "translation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translation"
+          },
+          "word": {
+            "title": "Word",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "word",
+          "created_at"
+        ],
+        "title": "VocabOut",
+        "type": "object"
+      },
+      "VocabStatsOut": {
+        "properties": {
+          "mastered": {
+            "default": 0,
+            "title": "Mastered",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "VocabStatsOut",
+        "type": "object"
+      },
+      "VocabUpdate": {
+        "description": "修改生词（仅传需要改的字段）。",
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "mastered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastered"
+          },
+          "translation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translation"
+          }
+        },
+        "title": "VocabUpdate",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "FayeLong 英语学习网站",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/attempts": {
+      "post": {
+        "description": "提交一次听写：与标准答案比对，记录结果并返回词级明细。",
+        "operationId": "create_attempt_api_attempts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttemptCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Attempt",
+        "tags": [
+          "dictation"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "description": "登录。失败次数过多会临时封禁该来源 IP。",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "退出登录：只清 cookie（token 无状态，服务端无需额外作废）。",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password": {
+      "post": {
+        "description": "修改密码。需已登录且知道当前密码。",
+        "operationId": "change_password_api_auth_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/setup": {
+      "post": {
+        "description": "首次初始化账号。已存在账号时一律拒绝（防止公网上被抢占/重置）。",
+        "operationId": "setup_api_auth_setup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "description": "鉴权状态。前端据此决定渲染「首次设置」「登录页」还是应用本体。",
+        "operationId": "auth_status_api_auth_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Status",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "description": "全部分类（含每个分类的素材数）+ 「未分类」素材数。",
+        "operationId": "list_categories_api_categories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Categories",
+        "tags": [
+          "categories"
+        ]
+      },
+      "post": {
+        "description": "新建分类。`sort_order = COALESCE(MAX(sort_order), -1) + 1`（空表首个得 0）。",
+        "operationId": "create_category_api_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Category",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/categories/order": {
+      "patch": {
+        "description": "按提交的 ids 顺序重写 `sort_order`（0 基）。\n\n`ids` 必须是当前**全部分类 id 的完整有序集合**：不得有未知 id、不得缺项、不得重复，\n否则 400。",
+        "operationId": "reorder_categories_api_categories_order_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryReorder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Categories",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/categories/{category_id}": {
+      "delete": {
+        "description": "删除分类：先把旗下素材退回「未分类」，再删分类行；**不删任何素材**。\n\n显式 `UPDATE media SET category_id=NULL` 而不依赖 DB 级联 —— 即使某条连接未开\nFK，回落语义也正确；DB 级 `ON DELETE SET NULL` 只作第二道防线。",
+        "operationId": "delete_category_api_categories__category_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "title": "Category Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Category Api Categories  Category Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Category",
+        "tags": [
+          "categories"
+        ]
+      },
+      "patch": {
+        "description": "重命名分类（本轮只允许改 name）。",
+        "operationId": "update_category_api_categories__category_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "title": "Category Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Category",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/dict/{word}": {
+      "get": {
+        "description": "查询一个英文单词（含词形还原）。",
+        "operationId": "lookup_word_api_dict__word__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "word",
+            "required": true,
+            "schema": {
+              "title": "Word",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup Word",
+        "tags": [
+          "dict"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "返回服务状态、关键依赖自检结果与数据目录位置。",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/media": {
+      "get": {
+        "description": "素材列表。可选 `category_id` 过滤：\n\n- 缺省 → 不加条件（保持既有「全部」行为，契约兼容）\n- 字面量 `none` → 只看「未分类」（`category_id IS NULL`）\n- 整数串 → 只看该分类\n- 其他非法值 → 400",
+        "operationId": "list_media_api_media_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Media",
+        "tags": [
+          "media"
+        ]
+      },
+      "post": {
+        "description": "上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。",
+        "operationId": "upload_media_api_media_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_media_api_media_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/batch-category": {
+      "post": {
+        "description": "批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。\n\n- `ids` 为空 → 400；`category_id` 指向的分类不存在 → 404。\n- `ids` 中不存在的媒体 id 不报错，收进 `missing` 回报，便于前端提示「N 个已失效」。",
+        "operationId": "batch_set_category_api_media_batch_category_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCategoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Batch Set Category Api Media Batch Category Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Batch Set Category",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/import": {
+      "post": {
+        "description": "从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。",
+        "operationId": "import_from_inbox_api_media_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import From Inbox",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/inbox": {
+      "get": {
+        "description": "列出收件箱里的素材（用户直接把文件放进该目录即可）。",
+        "operationId": "get_inbox_api_media_inbox_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Inbox",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}": {
+      "delete": {
+        "operationId": "delete_media_api_media__media_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Media",
+        "tags": [
+          "media"
+        ]
+      },
+      "get": {
+        "operationId": "get_media_api_media__media_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Media",
+        "tags": [
+          "media"
+        ]
+      },
+      "patch": {
+        "operationId": "update_media_api_media__media_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/clips": {
+      "delete": {
+        "description": "清理切片以回收磁盘（学习页仍可整段播放）。",
+        "operationId": "clear_clips_api_media__media_id__clips_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clear Clips Api Media  Media Id  Clips Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Clips",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/clips/{idx}": {
+      "get": {
+        "description": "取某一句的音频切片（支持 Range，便于单句循环与拖动）。",
+        "operationId": "get_clip_api_media__media_id__clips__idx__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "idx",
+            "required": true,
+            "schema": {
+              "title": "Idx",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Clip",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/notes": {
+      "get": {
+        "description": "某个媒体的句子笔记汇总（供学习页「笔记」面板）。",
+        "operationId": "list_media_notes_api_media__media_id__notes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaNotesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Media Notes",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/notes/export": {
+      "get": {
+        "description": "导出某个媒体的句子笔记为 Markdown 文件（浏览器下载）。",
+        "operationId": "export_media_notes_api_media__media_id__notes_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Media Notes",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/progress": {
+      "get": {
+        "description": "以 SSE 推送处理进度，直到 `done` / `failed` 后自动结束。",
+        "operationId": "media_progress_api_media__media_id__progress_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Media Progress",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/retranscribe": {
+      "post": {
+        "description": "重新识别（保留已转码音频，只重跑 识别→翻译→切片）。\n\n注意：会按识别结果重建句表，原有句子笔记与听写记录将一并清除。",
+        "operationId": "retranscribe_media_api_media__media_id__retranscribe_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retranscribe Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/retry": {
+      "post": {
+        "description": "重新处理（失败重试 / 手动重跑转码）。",
+        "operationId": "retry_media_api_media__media_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/media/{media_id}/stream": {
+      "get": {
+        "description": "流式播放：优先转码后的标准音频；转码完成前回退播放原始音频文件。",
+        "operationId": "stream_media_api_media__media_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/notes/{sentence_id}": {
+      "get": {
+        "description": "读取某句的笔记。",
+        "operationId": "get_note_api_notes__sentence_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Note",
+        "tags": [
+          "notes"
+        ]
+      },
+      "put": {
+        "description": "保存某句的笔记（upsert；内容为空则删除该笔记）。",
+        "operationId": "save_note_api_notes__sentence_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteUpsert"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Note",
+        "tags": [
+          "notes"
+        ]
+      }
+    },
+    "/api/question-types": {
+      "get": {
+        "description": "下发全部已注册题型（code / label / grade_mode / requires_external）。\n\nReturns:\n    `{\"types\": [...]}`，按 `code` 升序；注册表为空时返回 `{\"types\": []}`。\n\nNotes:\n    端点以 **GET `/api/question-types`** 暴露（与现有 34 个端点同一风格：\n    复数资源名 + 无尾部斜杠）。它受 `main.py` 的全局登录门禁保护 ——\n    清单里不含任何题目内容，但仍然不该给未登录者看站点结构。",
+        "operationId": "list_question_types_api_question_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionTypeListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Question Types",
+        "tags": [
+          "question-types"
+        ]
+      }
+    },
+    "/api/sentences/{sentence_id}": {
+      "patch": {
+        "description": "编辑单句（原文 / 翻译 / 时间边界）。",
+        "operationId": "update_sentence_api_sentences__sentence_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentenceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Sentence",
+        "tags": [
+          "sentences"
+        ]
+      }
+    },
+    "/api/sentences/{sentence_id}/attempts": {
+      "get": {
+        "description": "某句的听写历史（按时间倒序），每条记录附带词级明细。\n\n明细是**读取时按当前原文实时重算的复盘视图**，不落库（`attempts` 表只追加、\n不存词级明细）。因此比对基准始终是句子当前的标准答案 `text_en`；若原文后来被\n校对改过，明细会随之变化，但每条记录的 `accuracy` / `is_correct` 仍是**提交当时\n写入数据库的历史值**（历史成绩是当时的事实，不因改原文而变）。",
+        "operationId": "list_attempts_api_sentences__sentence_id__attempts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Attempts",
+        "tags": [
+          "dictation"
+        ]
+      }
+    },
+    "/api/sentences/{sentence_id}/merge": {
+      "post": {
+        "description": "与相邻句合并（默认向后合并）。",
+        "operationId": "merge_sentence_api_sentences__sentence_id__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentenceMergeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Merge Sentence",
+        "tags": [
+          "sentences"
+        ]
+      }
+    },
+    "/api/sentences/{sentence_id}/retranslate": {
+      "post": {
+        "description": "单句重新翻译（在线引擎 + 缓存）。",
+        "operationId": "retranslate_sentence_api_sentences__sentence_id__retranslate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retranslate Sentence",
+        "tags": [
+          "sentences"
+        ]
+      }
+    },
+    "/api/sentences/{sentence_id}/split": {
+      "post": {
+        "description": "在 `at_ms` 处把一句拆成两句。",
+        "operationId": "split_sentence_api_sentences__sentence_id__split_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentenceSplitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Split Sentence",
+        "tags": [
+          "sentences"
+        ]
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "description": "返回全局学习概览。",
+        "operationId": "get_stats_api_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Stats",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/vocab": {
+      "get": {
+        "operationId": "list_vocab_api_vocab_get",
+        "parameters": [
+          {
+            "description": "按是否已掌握筛选",
+            "in": "query",
+            "name": "mastered",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按是否已掌握筛选",
+              "title": "Mastered"
+            }
+          },
+          {
+            "description": "按单词 / 释义搜索",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按单词 / 释义搜索",
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Vocab",
+        "tags": [
+          "vocab"
+        ]
+      },
+      "post": {
+        "description": "把一个生词加入生词本（同一词重复添加不会产生第二条）。",
+        "operationId": "create_vocab_api_vocab_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Vocab",
+        "tags": [
+          "vocab"
+        ]
+      }
+    },
+    "/api/vocab/export": {
+      "get": {
+        "description": "导出整个生词本为 Markdown 文件。",
+        "operationId": "export_vocab_api_vocab_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mastered",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mastered"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Vocab",
+        "tags": [
+          "vocab"
+        ]
+      }
+    },
+    "/api/vocab/{vocab_id}": {
+      "delete": {
+        "operationId": "delete_vocab_api_vocab__vocab_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vocab_id",
+            "required": true,
+            "schema": {
+              "title": "Vocab Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Vocab",
+        "tags": [
+          "vocab"
+        ]
+      },
+      "patch": {
+        "operationId": "update_vocab_api_vocab__vocab_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vocab_id",
+            "required": true,
+            "schema": {
+              "title": "Vocab Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Vocab",
+        "tags": [
+          "vocab"
+        ]
+      }
+    }
+  }
+}

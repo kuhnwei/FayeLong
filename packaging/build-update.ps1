@@ -176,11 +176,14 @@ Good "前端产物 -> static\（$(Format-Size (Get-TreeSize (Join-Path $Stage 's
 
 $null = New-Item -ItemType Directory -Force -Path $ScriptsIn
 Copy-FileSafe -Source (Join-Path $Pack 'launcher.py')  -Target (Join-Path $ScriptsIn 'launcher.py')
+# worker 启动垫片（embeddable Python 忽略 PYTHONPATH，必须随包更新，否则就地更新
+# 到 P3-6 之后的版本时 worker 会起不来 —— 详见 packaging/worker_entry.py）。
+Copy-FileSafe -Source (Join-Path $Pack 'worker_entry.py') -Target (Join-Path $ScriptsIn 'worker_entry.py')
 Copy-FileSafe -Source (Join-Path $Pack 'bootstrap.py') -Target (Join-Path $ScriptsIn 'bootstrap.py')
 Copy-FileSafe -Source (Join-Path $Pack 'update.py')    -Target (Join-Path $ScriptsIn 'update.py')
 Copy-FileSafe -Source (Join-Path $Root 'backend\scripts\selftest.py')   -Target (Join-Path $ScriptsIn 'selftest.py')
 Copy-FileSafe -Source (Join-Path $Root 'backend\scripts\fetch_dict.py') -Target (Join-Path $ScriptsIn 'fetch_dict.py')
-Good '启动器 / 资源下载 / 就地更新脚本 -> scripts\'
+Good '启动器 / worker 垫片 / 资源下载 / 就地更新脚本 -> scripts\'
 
 # ---------------------------------------------------------------- 3 用户文件
 

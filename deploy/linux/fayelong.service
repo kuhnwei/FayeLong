@@ -16,7 +16,18 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=FAYELONG_HOST=127.0.0.1
 Environment=FAYELONG_PORT=8000
 # 2 vCPU 机器：后台转码并发压到 1，避免与 ASR 抢核
+# ⚠️ P3-2 起 `FAYELONG_WORKER_THREADS` **不再生效**（调度权已交给 jobs + 独立 worker）。
+#    这里刻意保留 =1：万一回滚到 P3-2 之前的代码，旧代码读的正是这个值，
+#    保留它能让「回滚」不需要再改 unit 文件。
 Environment=FAYELONG_WORKER_THREADS=1
+# ★ P3-2 起真正生效的容量开关：1 = 只跑一个转码/识别任务。
+#   即使 web 进程不执行任务（下面的 off），也照样显式设 1 ——
+#   `job_cpu_threads=0` 在 2 vCPU 上会取 2，一旦有人把 off 改成 auto 就会抢核。
+Environment=FAYELONG_JOB_CPU_THREADS=1
+# web 进程**不执行**任务：任务全部由 fayelong-worker.service 执行。
+# 回滚到「单进程全干」时把这里改成 auto（或 on）+ `systemctl disable --now fayelong-worker`，
+# 详见 deploy/README.md §X.4。
+Environment=FAYELONG_WEB_INPROC_WORKER=off
 # 语音识别默认规格：small（用户决策，准确率优先）
 # 理由：本工具是「听写」用途，转写文本即标准答案，错词会把拼写正确的输入误判为错误。
 # 2 vCPU 实测（同一 34.4s 音频）：small RTF 1.13x / base RTF 0.37x（base 更快但精度略低）。
@@ -34,8 +45,12 @@ Restart=on-failure
 RestartSec=5
 
 # 内存兜底：软限触发回收，硬限超限杀进程并由 systemd 自动拉起，防整机 OOM
-MemoryHigh=1000M
-MemoryMax=1300M
+# ★ P3-2 起 web **不再加载 whisper 模型**（asr 是延迟导入，且任务由 worker 执行）
+#   → 常驻从「≈1.1 GB」降到「≈150 MB」，因此这里可以大幅收紧到 400M。
+#   worker 单独一个 unit（MemoryMax=1400M）。两个进程合计上限 1800M < 2GB。
+# ⚠️ 上线后必须用 `systemd-cgtop` 实测回填（deploy/README.md §X.3）。
+MemoryHigh=300M
+MemoryMax=400M
 
 StandardOutput=append:/var/log/fayelong/service.log
 StandardError=append:/var/log/fayelong/service.err.log

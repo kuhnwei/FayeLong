@@ -5,7 +5,11 @@
 1. **自检**：确认自带 Python 运行时、依赖、便携 ffmpeg 是否齐备，缺失时给出中文提示；
 2. **补资源**：模型 / 词库缺失时询问是否现在下载（轻量交付包首次运行走这里）；
 3. **选端口**：默认 8000，被占用则自动向后找空闲端口；若发现已有 FayeLong 在跑，直接打开浏览器；
-4. **启动服务**：在同进程内拉起 Uvicorn（控制台实时打印进度，日志同时落到 `data/logs/`）；
+4. **启动服务**：在同进程内拉起 Uvicorn（控制台实时打印进度，日志同时落到 `data/logs/`），
+   **并另起一个 worker 子进程**（`worker_entry.py` → `app.worker`，**不是** `-m`：
+   交付包的 embeddable Python 忽略 `PYTHONPATH`，`-m` 会找不到 `app` 包）执行
+   转码/识别/翻译/切片；退出时按 pid 优雅停止子进程（`fayelong.pid` 树杀 +
+   worker 侧 `--parent-pid` 自杀兜底）；
 5. **开浏览器**：端口可连通后自动打开默认浏览器。
 
 命令行（供排错 / 自动化使用）::
@@ -28,6 +32,7 @@ import argparse
 import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -52,6 +57,18 @@ DATA_DIR = ROOT / "data"
 LOG_DIR = DATA_DIR / "logs"
 CONSOLE_LOG = LOG_DIR / "console.log"
 CONSOLE_LOG_MAX = 2 * 1024 * 1024          # 超过则轮转为 console.log.1
+
+#: 本进程（web / uvicorn）的 pid 文件 —— 也是 worker 的「父进程存活」判据。
+PID_FILE = LOG_DIR / "fayelong.pid"
+#: worker 子进程的 pid 文件（「停止 FayeLong.bat」的二次兜底用）。
+WORKER_PID_FILE = LOG_DIR / "worker.pid"
+#: worker 子进程的 stdout/stderr（它自己还会写 data/logs/worker.log）。
+WORKER_CONSOLE_LOG = LOG_DIR / "worker.out"
+#: worker 的启动垫片（与 launcher.py 同在 scripts\ 下）。
+#: ⚠️ **不能**用 `python -m app.worker`：交付包的 embeddable Python 会忽略
+#: `PYTHONPATH`（`_pth` 隔离模式），`-m` 在打包形态下必然 `No module named 'app'`。
+#: 详见 packaging/worker_entry.py 的模块 docstring。
+WORKER_ENTRY = HERE / "worker_entry.py"
 
 # 安装位置记录：开机自启脚本与「更新」脚本靠它定位安装目录
 _APPDATA = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home())
@@ -379,19 +396,147 @@ def open_browser_later(port: int, timeout: float = 30.0) -> None:
     warn(f"服务启动较慢，请手动访问 {url}")
 
 
+def _app_root() -> Path:
+    """`app` 包所在目录（开发环境是 `backend/`，打包环境就是解压根目录）。"""
+    if (ROOT / "app").is_dir():
+        return ROOT
+    if (ROOT / "backend" / "app").is_dir():
+        return ROOT / "backend"
+    return ROOT
+
+
+def start_worker(silent: bool) -> subprocess.Popen | None:
+    """起一个独立的 worker 子进程（P3-2 起 web 进程默认不执行长任务）。
+
+    Args:
+        silent: 静默模式（`pythonw` / `--silent`）。为真时传 `CREATE_NO_WINDOW`，
+            保证**不弹任何黑窗**；`pythonw.exe` 本身没有控制台，但
+            `python.exe --silent` 会有，所以两种情形都要覆盖。
+
+    Returns:
+        子进程句柄；若 `FAYELONG_WEB_INPROC_WORKER=on`（单进程回滚模式）则 `None`。
+
+    Notes:
+        * **绝不调用 `input()`**：静默模式下没有 stdin，`input()` 会抛
+          `RuntimeError: input(): lost sys.stdin`，进程直接死且**没有任何提示**
+          （历史坑）。
+        * **必须经 `worker_entry.py` 启动**（不是 `-m app.worker`）：交付包用
+          embeddable Python，`_pth` 隔离模式会忽略 `PYTHONPATH`、且 `sys.path` 的
+          `.` 指向 `runtime\\python\\` 目录 —— 直接 `-m` 实测报
+          `ModuleNotFoundError: No module named 'app'`，worker 起不来，只剩 web
+          进程内降级（G3-④ 的双进程就不成立）。垫片缺失时（极老的交付包）
+          回退到 `-m` 并告警，绝不因此不启动。
+        * `--parent-pid` 让 worker 自己盯着 `fayelong.pid`：launcher 被任务管理器
+          杀掉、`taskkill /T` 又没走时，worker 会在 5s 内自行退出，不会变成抢任务
+          的孤儿（DD-001 §9 R9）。
+        * stdout/stderr 落到 `data/logs/worker.out`：worker 崩溃时才有人在现场
+          （它自己的 `worker.log` 只覆盖 handler 内部日志，进程级 traceback 在
+          这里）。
+    """
+    mode = str(os.environ.get("FAYELONG_WEB_INPROC_WORKER") or "auto").strip().lower()
+    if mode == "on":
+        ok("FAYELONG_WEB_INPROC_WORKER=on：不另起 worker 进程（单进程模式）")
+        return None
+
+    app_root = _app_root()
+    env = {
+        **os.environ,
+        # 打包版保持 auto：worker 万一崩了，web 侧 5s 后会接管，
+        # 用户看到的是「慢」而不是「永远排队中」（DD-001 §9 R8）。
+        "FAYELONG_WEB_INPROC_WORKER": "auto",
+        "PYTHONPATH": os.pathsep.join(
+            [str(app_root)] + ([os.environ["PYTHONPATH"]] if os.environ.get("PYTHONPATH") else [])
+        ),
+        "PYTHONUNBUFFERED": "1",
+    }
+
+    creationflags = 0
+    if os.name == "nt" and silent:
+        creationflags = subprocess.CREATE_NO_WINDOW
+
+    worker_args = ["--parent-pid", str(os.getpid())]
+    if WORKER_ENTRY.is_file():
+        command = [sys.executable, str(WORKER_ENTRY), *worker_args]
+    else:
+        # 老交付包（没有垫片）回退：开发环境 venv 里 `-m` 是可用的。
+        warn("未找到 scripts/worker_entry.py，回退到 python -m app.worker")
+        command = [sys.executable, "-m", "app.worker", *worker_args]
+
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        console_log = open(WORKER_CONSOLE_LOG, "a", encoding="utf-8", errors="replace")
+    except OSError as exc:  # noqa: BLE001  日志打不开不该阻止服务启动
+        warn(f"无法写入 worker 的 stdout 日志（{exc}），退化为继承父进程输出")
+        console_log = subprocess.DEVNULL  # type: ignore[assignment]
+
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=str(app_root),
+            env=env,
+            stdout=console_log,
+            stderr=subprocess.STDOUT,
+            creationflags=creationflags,
+        )
+    except OSError as exc:
+        warn(f"启动 worker 子进程失败（{exc}）；web 进程会在 5s 后自行接管任务")
+        return None
+
+    try:
+        WORKER_PID_FILE.write_text(str(process.pid), encoding="ascii")
+    except OSError:
+        pass
+    ok(f"任务执行进程已启动（pid {process.pid}，日志 data/logs/worker.log）")
+
+    # 崩溃只告警一次、**不自动重启**：崩溃循环比「慢一点」更难排查（DD-001 §9 R8）。
+    def _watch() -> None:
+        try:
+            code = process.wait()
+        except Exception:  # noqa: BLE001
+            return
+        warn(
+            f"任务执行进程已退出（code={code}）。详见 data/logs/worker.log；"
+            "web 进程会在 5s 内接管未完成的任务（只是慢一些）"
+        )
+
+    threading.Thread(target=_watch, name="worker-watch", daemon=True).start()
+    return process
+
+
+def stop_worker(process: subprocess.Popen | None) -> None:
+    """停掉 worker 子进程：`terminate` → 等 5s → `kill`，并清理 pid 文件。"""
+    if process is not None and process.poll() is None:
+        try:
+            process.terminate()
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+                process.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        except OSError:
+            pass
+    try:
+        WORKER_PID_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def run_server(port: int, open_browser: bool, silent: bool = False) -> int:
     import uvicorn
 
     from app import __version__
     from app.core.config import DB_PATH, INBOX_DIR
 
-    pid_file = LOG_DIR / "fayelong.pid"
+    pid_file = PID_FILE
+    worker_proc: subprocess.Popen | None = None
     say("")
     say("[4/4] 启动本地服务")
     ok(f"服务地址：http://127.0.0.1:{port}")
     ok(f"数据目录：{DB_PATH.parent}")
     ok(f"投放素材：{INBOX_DIR}")
-    ok(f"运行日志：{LOG_DIR / 'app.log'}")
+    ok(f"运行日志：{LOG_DIR / 'app.log'}（任务执行：worker.log）")
     say("")
     say("-" * BANNER_WIDTH)
     if silent:
@@ -413,6 +558,10 @@ def run_server(port: int, open_browser: bool, silent: bool = False) -> int:
     except OSError as exc:  # noqa: BLE001  PID 文件只是给「停止」脚本用的便利
         warn(f"写入 PID 文件失败（{exc}），可用窗口 Ctrl+C 停止服务")
 
+    # ⚠️ 顺序很重要：pid 文件写好之后再起 worker —— worker 的 `--parent-pid`
+    # 守护线程会读这个文件，抢在写入之前检查会把健康的 worker 误杀。
+    worker_proc = start_worker(silent)
+
     try:
         uvicorn.run(
             "app.main:app",
@@ -428,6 +577,7 @@ def run_server(port: int, open_browser: bool, silent: bool = False) -> int:
             raise PortBusy(str(port)) from exc
         raise
     finally:
+        stop_worker(worker_proc)
         try:
             pid_file.unlink(missing_ok=True)
         except OSError:

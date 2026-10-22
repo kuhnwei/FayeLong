@@ -26,6 +26,14 @@ mkdir -p "$APP_ROOT/.backup"
 cp -a "$APP_ROOT/backend" "$APP_ROOT/.backup/backend-$STAMP"
 [ -d "$APP_ROOT/frontend/dist" ] && cp -a "$APP_ROOT/frontend/dist" "$APP_ROOT/.backup/dist-$STAMP"
 
+# ★ P3-2：**动文件之前必须先把两个进程都停下来**。
+#   worker 会在运行中 import 业务模块（延迟导入 asr/translate/clip），
+#   如果它在解包过程中 import 到「半截代码」，会抛 ImportError/AttributeError，
+#   而 systemd 的 Restart=on-failure 会让它反复重启、日志刷屏，还可能有任务被
+#   判失败（attempts +1）。先 stop 再动文件是最省心的顺序。
+echo "==> 停止服务（web + worker）"
+systemctl stop fayelong fayelong-worker || true
+
 echo "==> 暂存新代码"
 rm -rf "$APP_ROOT/backend.new" "$APP_ROOT/frontend/dist.new"
 cp -a "$SRC/backend" "$APP_ROOT/backend.new"
@@ -42,15 +50,21 @@ echo "==> 同步依赖（requirements 有变化时才真正安装）"
 	-r "$APP_ROOT/backend/requirements.txt" \
 	-r "$APP_ROOT/backend/requirements-ml.txt"
 
-echo "==> 重启服务"
-systemctl restart fayelong
+echo "==> 重启服务（先 web 再 worker；顺序反过来也安全）"
+systemctl start fayelong
+systemctl start fayelong-worker
 sleep 3
 systemctl is-active fayelong
+systemctl is-active fayelong-worker
 curl -s -o /dev/null -w "  health -> %{http_code}\n" --max-time 15 http://127.0.0.1:8000/api/health || true
 
 echo
 echo "完成。如需回滚到本次更新前，执行："
-echo "  rm -rf $APP_ROOT/backend $APP_ROOT/frontend/dist \\"
+echo "  systemctl stop fayelong fayelong-worker \\"
+echo "    && rm -rf $APP_ROOT/backend $APP_ROOT/frontend/dist \\"
 echo "    && mv $APP_ROOT/.backup/backend-$STAMP $APP_ROOT/backend \\"
 echo "    && cp -a $APP_ROOT/.backup/dist-$STAMP $APP_ROOT/frontend/dist \\"
-echo "    && systemctl restart fayelong"
+echo "    && systemctl start fayelong"
+echo
+echo "若回滚到 P3-2 之前的代码（那时没有 worker 这个 unit），再补一条："
+echo "  systemctl disable --now fayelong-worker"

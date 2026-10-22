@@ -107,13 +107,20 @@ fetch_dict(){
 }
 
 install_service(){
-	step "安装 systemd 服务"
+	step "安装 systemd 服务（web + worker 两个 unit）"
 	install -m 644 "$HERE/fayelong.service" /etc/systemd/system/fayelong.service
+	# P3-2：任务是**独立进程**执行的。web 侧是 FAYELONG_WEB_INPROC_WORKER=off，
+	# 少了这个 unit 就没人消费 jobs → 所有素材永远停在「排队中」。
+	install -m 644 "$HERE/fayelong-worker.service" /etc/systemd/system/fayelong-worker.service
 	systemctl daemon-reload
-	systemctl enable fayelong
+	systemctl enable fayelong fayelong-worker
+	# 顺序：先 web（提供 API，用户先能打开页面）再 worker（开始消费任务）。
+	# 反过来也安全 —— off 模式下 web 不干活，worker 先起只会更早开始处理积压任务。
 	systemctl restart fayelong
+	systemctl restart fayelong-worker
 	sleep 4
 	systemctl --no-pager status fayelong | head -14
+	systemctl --no-pager status fayelong-worker | head -14
 }
 
 install_caddy(){

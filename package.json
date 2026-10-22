@@ -1,0 +1,14 @@
+{
+  "name": "fayelong-contract-tools",
+  "private": true,
+  "version": "0.1.0",
+  "description": "仓库根契约工具链（OpenAPI 基线 / TS 类型生成 / 契约 diff 门禁）。与 frontend/ 完全隔离，不影响旧前端依赖与构建。",
+  "type": "module",
+  "scripts": {
+    "gen:types": "node scripts/gen-api-types.mjs",
+    "check:contract": "node scripts/check-contract.mjs"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.4"
+  }
+}
