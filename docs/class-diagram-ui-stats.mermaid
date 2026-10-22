@@ -1,0 +1,95 @@
+classDiagram
+    %% ===== 后端：统计概览模型（backend/app/schemas/stats.py）=====
+    class DailyPoint {
+        +str date
+        +int attempts
+        +float accuracy
+        +int new_vocab
+    }
+    class KpiOut {
+        +int today_attempts
+        +float today_accuracy
+        +int today_new_vocab
+        +int streak_days
+    }
+    class CourseProgressOut {
+        +int media_id
+        +str title
+        +int total
+        +int attempted
+        +float pct
+    }
+    class RecentAttemptOut {
+        +str sentence_text
+        +datetime created_at
+        +float accuracy
+    }
+    class OverviewOut {
+        +int days
+        +DailyPoint[] daily
+        +KpiOut kpi
+        +CourseProgressOut[] courses
+        +RecentAttemptOut[] recent
+    }
+    OverviewOut *-- DailyPoint
+    OverviewOut *-- KpiOut
+    OverviewOut *-- CourseProgressOut
+    OverviewOut *-- RecentAttemptOut
+
+    class StatsRouter {
+        +get_stats(db) StatsOut
+        +get_overview(days, db) OverviewOut
+    }
+    StatsRouter ..> OverviewOut : 返回
+
+    %% ===== 前端：API 层（src/api/stats.ts）=====
+    class StatsApi {
+        +getOverview(days) StatsOverview
+    }
+    StatsApi ..> OverviewOut : HTTP 映射
+
+    %% ===== 前端：图表组件契约（src/components/charts）=====
+    class BarChart {
+        +List data
+        +int height
+        +str color
+        +str emptyText
+    }
+    class LineChart {
+        +List points
+        +float target
+        +int height
+        +str color
+        +str targetColor
+    }
+    class Heatmap {
+        +List data
+        +int weeks
+        +int cell
+        +List colors
+    }
+    class Donut {
+        +List segments
+        +int size
+        +int thickness
+    }
+    class ChartTheme {
+        +object CHART
+    }
+    BarChart ..> ChartTheme : 引用尺寸常量
+    LineChart ..> ChartTheme
+    Heatmap ..> ChartTheme
+    Donut ..> ChartTheme
+
+    class StatsPage {
+        +StatsOverview data
+        +render()
+    }
+    StatsPage --> StatsApi : 调用
+    StatsPage *-- BarChart
+    StatsPage *-- LineChart
+    StatsPage *-- Heatmap
+    StatsPage *-- Donut
+
+    note for OverviewOut "空库：daily 长度仍=days 且全 0；courses/recent=[]\naccuracy 0-1，pct 0-100，streak 今日无听写=0"
+    note for ChartTheme "barWidth=22 barRadius=6 lineWidth=3 cellSize=13 cellGap=3.5\n唯一尺寸来源，组件内禁止散写"

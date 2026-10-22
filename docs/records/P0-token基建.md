@@ -272,3 +272,41 @@ await installSessionInBrowser(cdp, BASE)
 2. **D3** 第 16/17 条（`rounded-md` / `font-medium`）不属「颜色类名」，按架构「建议同批」执行，纯增量 fallback、零风险；如需严格守边界可单独回滚这两处。
 3. **基线已红 2 项**（footer 三段式、`/study/1` h2），需 P1-2 / P1-7 收口；`verify_vue_roundB` 的登录门禁断言建议随 P1-1 校正。
 4. 真实库里 `vocab` 有 12 条、其中 9 条是 verify 造出来的测试生词（`verify_vocab_practice` 日志提示「已保留，可用 `--wipe-test-words` 删除」）。指纹未变，故未清理；如需清理请单独确认（会改指纹）。
+
+---
+
+## 主理人独立验收（齐活林，2026-10-22）
+
+> 不只采信工程师报告，以下为独立复跑/核验结果。
+
+| 复核项 | 方法 | 结论 |
+|---|---|---|
+| 提交完整性 | `git log --oneline -4` | ✅ `704c7a2` feat + `369f0fe` test，父提交 `7e53f45` |
+| 「换皮前页面零改动」 | `git diff --stat 7e53f45..HEAD -- frontend-vue/src/pages frontend-vue/src/components` | ✅ 输出为空 |
+| token 取值 | `grep -- '--lemon-400\|--ink:' src/styles/tokens.css` | ✅ `#FFD93B` / `#4A2B14`，与契约一致 |
+| 构建 | 主理人独立 `npm run build` | ✅ 7.35s 通过；CSS 29.14→31.13kB（token/组件类生效） |
+| 解耦范围 | `git show --stat 369f0fe` | ✅ 7 个 verify 脚本 + 记录，共 79 insert / 25 delete，未越界到源码 |
+| fallback 实现 | `grep dataset.state verify_m5.mjs` | ✅ `data-*` 优先，原类名兜底 |
+| 越界改动 | `grep installSessionInBrowser verify_vue_skeleton.mjs` | ✅ import:20 / 调用:149，仅补会话注入 2 行 |
+
+### 决策记录
+
+- **D1 接受**：`verify_vue_skeleton` 补 `installSessionInBrowser` 属必需修复。该脚本此前缺登录会话注入，12/20 恒红、无法充当 P1-2 门禁；补齐后 8/20 → 18/20，性质是「让门禁可用」，非放宽断言。
+- **D3 接受**：第 16/17 条（圆角/字重类名）一并解耦。纯增量 fallback，`verify_v1_12` 22/22、`verify_category` 59/59 证明零回归。
+- **DoD 口径**：P1 起一律用「≥ 基线」，不用「全绿」对账。当前基线已红项登记如下。
+
+### 基线已红项（不得计入 P1 回退，但 P1 应尽量转绿）
+
+| # | 红项 | 根因 | 由谁转绿 |
+|---|---|---|---|
+| R1 | `三段式…footer shrink-0`（skeleton） | `PlayerBar` 根节点是 `<div>`，`:scope > footer` 取不到 | T05 公共外壳落真实 `<footer>` |
+| R2 | `路由 /study/1 渲染「学习页」`（skeleton） | `StudyPage` 的 `main h2` 是媒体标题，不含「学习页」 | **T10 强制：换皮后 `main h2` 必须含「学习页」**（媒体标题降为副标题） |
+| R3 | `未登录要有 h2=登录`（roundB，1/7） | 登录页无 `<h2>` | **T04 顺手校正**：登录页标题用 `<h2>` 且含「登录」 |
+| R4 | 隔离库残留 9 条测试生词 | verify 写入隔离副本，真实库指纹未变 | 无需处理（副本随 /tmp 清理） |
+
+### P1 追加约束（已下发给工程师）
+
+1. T10 学习页：`main h2` 含「学习页」，15 个 `data-testid` 全留，`calc(100vh` 零命中，A-B 三段 title 逐字保留，提交前原文不进 DOM。
+2. T04 登录页：标题用 `<h2>` 含「登录」，同时转绿 R3。
+3. T05 外壳：落真实 `<footer>`（移动底栏 Tab），转绿 R1；导航 4 项按文本定位。
+4. 每页提交前必跑：该页对应 verify + `npm run build`；收尾统一跑指纹（真实库）。

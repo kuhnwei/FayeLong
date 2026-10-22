@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant SP as StatsPage.vue
+    participant API as api/stats.ts
+    participant BE as GET /api/stats/overview (api/stats.py)
+    participant DB as SQLite (app.db)
+
+    U->>SP: 打开 /stats
+    SP->>SP: 挂载，读取 days=14
+    SP->>API: getOverview(14)
+    API->>BE: request("/api/stats/overview?days=14")
+    BE->>DB: func.date(Attempt.created_at) 分组 count / avg(accuracy)
+    DB-->>BE: attempts_by_day / accuracy_by_day
+    BE->>DB: func.date(Vocab.created_at) 分组 count
+    DB-->>BE: vocab_by_day
+    BE->>DB: 每 Media: count(Sentence) / count(distinct Attempt.sentence_id) JOIN Sentence
+    DB-->>BE: courses 原始行
+    BE->>DB: Attempt JOIN Sentence ORDER BY created_at DESC LIMIT 6
+    DB-->>BE: recent 原始行
+    BE->>BE: 构造 [today-days+1 .. today] 完整日期序列并 0 填充
+    BE->>BE: kpi.today_* = 末日值；streak = 从今日倒数连续 attempts>0
+    BE-->>API: 200 OverviewOut {days, daily[], kpi, courses[], recent[]}（空库返回全零，非 404）
+    API-->>SP: StatsOverview
+    SP->>SP: daily 全零？ → 空态（引导卡 / 热力全灰 / KPI=0，非 NaN）
+    SP->>SP: 否则渲染 4 图表 + KPI 四卡 + 课程完成度 + 最近听写
+    SP-->>U: 7 区块真值出图
+
+    Note over SP,BE: 失败兜底：网络错误可重试；空库绝不产生 NaN/undefined（模型默认 0 + 前端 ?? 0）
