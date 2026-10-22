@@ -1,0 +1,52 @@
+/**
+ * 图标 barrel：保留旧 `frontend/src/components/icons.tsx` 的**全部导出名**，
+ * 供 P2 按名引用，例如 `import { PlayIcon } from '../components/icons'`。
+ *
+ * ⚠️ 尺寸一律用 **`class-name=`** 传（如 `<PlayIcon class-name="h-5 w-5" />`）—— 它会
+ * **替换**默认的 `h-4 w-4`。若误用 `class=`，Vue 会走 attrs 透传把尺寸**合并**进默认值
+ * （变成 `h-4 w-4 h-5 w-5`），Tailwind 里两个高度谁生效取决于 CSS 顺序 —— 且**不会报错**，
+ * 是静默失效。所以务必用 `class-name`。
+ */
+export { default as PlayIcon } from './PlayIcon.vue'
+export { default as PauseIcon } from './PauseIcon.vue'
+export { default as LoopIcon } from './LoopIcon.vue'
+export { default as BackIcon } from './BackIcon.vue'
+export { default as ForwardIcon } from './ForwardIcon.vue'
+export { default as UploadIcon } from './UploadIcon.vue'
+export { default as FolderIcon } from './FolderIcon.vue'
+export { default as RefreshIcon } from './RefreshIcon.vue'
+export { default as TrashIcon } from './TrashIcon.vue'
+export { default as PencilIcon } from './PencilIcon.vue'
+export { default as CloseIcon } from './CloseIcon.vue'
+export { default as BookIcon } from './BookIcon.vue'
+export { default as AlertIcon } from './AlertIcon.vue'
+export { default as EyeIcon } from './EyeIcon.vue'
+export { default as EyeOffIcon } from './EyeOffIcon.vue'
+export { default as ScissorsIcon } from './ScissorsIcon.vue'
+export { default as MergeIcon } from './MergeIcon.vue'
+export { default as TranslateIcon } from './TranslateIcon.vue'
+export { default as CheckIcon } from './CheckIcon.vue'
+export { default as SendIcon } from './SendIcon.vue'
+export { default as HistoryIcon } from './HistoryIcon.vue'
+export { default as TargetIcon } from './TargetIcon.vue'
+export { default as KeyboardIcon } from './KeyboardIcon.vue'
+export { default as PlusIcon } from './PlusIcon.vue'
+export { default as BookmarkPlusIcon } from './BookmarkPlusIcon.vue'
+export { default as StarFilledIcon } from './StarFilledIcon.vue'
+export { default as StarIcon } from './StarIcon.vue'
+export { default as DownloadIcon } from './DownloadIcon.vue'
+export { default as ExternalLinkIcon } from './ExternalLinkIcon.vue'
+export { default as NoteIcon } from './NoteIcon.vue'
+export { default as SearchIcon } from './SearchIcon.vue'
+export { default as SparkIcon } from './SparkIcon.vue'
+export { default as ABLoopIcon } from './ABLoopIcon.vue'
+export { default as ListIcon } from './ListIcon.vue'
+export { default as SortIcon } from './SortIcon.vue'
+export { default as SpeakerIcon } from './SpeakerIcon.vue'
+export { default as ShuffleIcon } from './ShuffleIcon.vue'
+export { default as LightbulbIcon } from './LightbulbIcon.vue'
+export { default as TrophyIcon } from './TrophyIcon.vue'
+export { default as HighlightIcon } from './HighlightIcon.vue'
+export { default as TagIcon } from './TagIcon.vue'
+export { default as ChevronUpIcon } from './ChevronUpIcon.vue'
+export { default as ChevronDownIcon } from './ChevronDownIcon.vue'
