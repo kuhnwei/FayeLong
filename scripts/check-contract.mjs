@@ -11,7 +11,7 @@
  *
  * 环境相关差异的显式容忍（不静默吞掉）
  * ----------------------------------
- * `app/main.py` 里的 SPA 回退路由 `"/"` 只在 `frontend/dist/index.html`
+ * `app/main.py` 里的 SPA 回退路由 `"/"` 只在 `frontend-vue/dist/index.html`
  * **不存在**时才注册，且未加 `include_in_schema=False`。因此当 dist 被删时，
  * `openapi()` 会凭空多出一个 `"/"` 的 GET operation。这不是契约变更，
  * 故本脚本对 `"/"` 路径的「存在与否」差异做**显式**容忍，并打印一条
@@ -184,7 +184,7 @@ function diffSpec(base, now) {
       const onlyGet = methods.length === 1 && methods[0].toLowerCase() === "get";
       if (onlyGet) {
         toleratedNotes.push(
-          `[已忽略] 路径 "${p}" 的差异：环境相关（frontend/dist 存在与否决定 ` +
+          `[已忽略] 路径 "${p}" 的差异：环境相关（frontend-vue/dist 存在与否决定 ` +
             `SPA 回退路由是否注册，见 app/main.py 末尾），仅多余一个 GET，非契约变更。`,
         );
         delete basePaths[p];

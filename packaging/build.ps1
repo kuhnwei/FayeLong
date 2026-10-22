@@ -65,6 +65,11 @@ $SiteDir   = Join-Path $PyDir 'Lib\site-packages'
 $ScriptsIn = Join-Path $Stage 'scripts'
 $DataDir   = Join-Path $Stage 'data'
 
+# 前端构建产物来源（P5 起为 Vue 版：frontend-vue\dist，拷进包里成为 static\）。
+# ⚠️ 刻意做成**单一变量**：预检、错误提示、Copy-Tree 全部引用它 ——
+#    否则下次再换前端栈又要改 4 处字面量（漏一处就是「预检过了但拷了旧产物」）。
+$FrontendDist = Join-Path $Root 'frontend-vue\dist'
+
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 # .vbs 必须存成 UTF-16LE + BOM：Windows Script Host 不认 UTF-8，含中文会乱码甚至报语法错误
 $Utf16LeBom = New-Object System.Text.UnicodeEncoding($false, $true)
@@ -183,10 +188,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $Root 'backend\app\main.py'))) {
 }
 Good '后端代码就绪'
 
-$distIndex = Join-Path $Root 'frontend\dist\index.html'
+$distIndex = Join-Path $FrontendDist 'index.html'
 if (-not (Test-Path -LiteralPath $distIndex)) {
-    Fail '前端尚未构建：缺少 frontend\dist\index.html'
-    Fail '请先在 frontend 目录执行： npm install --ignore-scripts ; npx vite build'
+    Fail "前端尚未构建：缺少 $distIndex"
+    Fail '请先在 frontend-vue 目录执行： npm install --ignore-scripts ; npx vite build'
     exit 1
 }
 Good '前端构建产物就绪'
@@ -348,7 +353,7 @@ Copy-Tree -Source (Join-Path $Root 'tools\ffmpeg') -Target (Join-Path $Stage 'ru
     -ExcludeFile @('.gitkeep')
 Good "ffmpeg -> runtime\ffmpeg\（$(Format-Size (Get-TreeSize (Join-Path $Stage 'runtime\ffmpeg')))）"
 
-Copy-Tree -Source (Join-Path $Root 'frontend\dist') -Target (Join-Path $Stage 'static')
+Copy-Tree -Source $FrontendDist -Target (Join-Path $Stage 'static')
 Good "前端产物 -> static\（$(Format-Size (Get-TreeSize (Join-Path $Stage 'static')))）"
 
 $null = New-Item -ItemType Directory -Force -Path $ScriptsIn

@@ -16,7 +16,8 @@
    + 结尾换行，保证同一份代码在任何机器上产出逐字节相同的文件，
    diff 才有意义。
 3. **环境敏感差异**：`app/main.py` 的 SPA 回退路由 `/` 仅在
-   `frontend/dist/index.html` 不存在时才注册，且未加
+   `frontend-vue/dist/index.html` 不存在时才注册（P5 起静态目录首选
+   `frontend-vue/dist`，见 `core/config.py::STATIC_CANDIDATES`），且未加
    `include_in_schema=False`。因此 dist 缺失时 `openapi()` 会凭空多出
    1 个 `"/"` operation。基线与校验都应在 dist 存在下进行；该差异由
    `check-contract.mjs` 显式容忍（打印「已忽略」及原因），不静默吞掉。

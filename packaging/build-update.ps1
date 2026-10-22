@@ -39,6 +39,10 @@ $Tmp   = Join-Path $Pack 'tmp'
 
 $ScriptsIn = Join-Path $Stage 'scripts'
 
+# 前端构建产物来源（P5 起为 Vue 版：frontend-vue\dist，拷进包里成为 static\）。
+# ⚠️ 与 build.ps1 保持同一口径的**单一变量**：预检 / 错误提示 / Copy-Tree 全用它。
+$FrontendDist = Join-Path $Root 'frontend-vue\dist'
+
 $Utf8NoBom  = New-Object System.Text.UTF8Encoding($false)
 $Utf16LeBom = New-Object System.Text.UnicodeEncoding($false, $true)
 
@@ -131,9 +135,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $Root 'backend\app\main.py'))) {
 }
 Good '后端代码就绪'
 
-if (-not (Test-Path -LiteralPath (Join-Path $Root 'frontend\dist\index.html'))) {
-    Fail '前端尚未构建：缺少 frontend\dist\index.html'
-    Fail '请先在 frontend 目录执行： npm install --ignore-scripts ; npx vite build'
+if (-not (Test-Path -LiteralPath (Join-Path $FrontendDist 'index.html'))) {
+    Fail "前端尚未构建：缺少 $(Join-Path $FrontendDist 'index.html')"
+    Fail '请先在 frontend-vue 目录执行： npm install --ignore-scripts ; npx vite build'
     exit 1
 }
 Good '前端构建产物就绪'
@@ -171,7 +175,7 @@ Copy-Tree -Source (Join-Path $Root 'backend\app') -Target (Join-Path $Stage 'app
     -ExcludeDir @('__pycache__') -ExcludeFile @('*.pyc')
 Good "后端代码 -> app\（$(Format-Size (Get-TreeSize (Join-Path $Stage 'app')))）"
 
-Copy-Tree -Source (Join-Path $Root 'frontend\dist') -Target (Join-Path $Stage 'static')
+Copy-Tree -Source $FrontendDist -Target (Join-Path $Stage 'static')
 Good "前端产物 -> static\（$(Format-Size (Get-TreeSize (Join-Path $Stage 'static')))）"
 
 $null = New-Item -ItemType Directory -Force -Path $ScriptsIn

@@ -5,7 +5,7 @@ echo [FayeLong] 一键启动：后端 + 任务执行进程 + 前端（3 个窗�
 echo.
 echo   Backend  : http://127.0.0.1:8000/docs   （API + 静态托管）
 echo   Worker   : 无端口，日志 data\logs\worker.log（转码/识别/翻译/切片）
-echo   Frontend : http://localhost:5173         （Vite 开发服务器）
+echo   Frontend : http://localhost:5174         （Vue + Vite 开发服务器）
 echo.
 echo 说明：start-backend.bat 一个字都没改 —— 它只起 web，靠
 echo       FAYELONG_WEB_INPROC_WORKER=auto 在 5s 后兜底；所以只跑后端也能用，

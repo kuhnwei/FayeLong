@@ -30,9 +30,15 @@ LOG_DIR = DATA_DIR / "logs"
 DB_PATH = DATA_DIR / "app.db"
 
 # 前端构建产物（单端口部署时由后端托管）
+#: ⚠️ **顺序即回滚策略**：`static_dir()` 取第一个含 `index.html` 的候选，故
+#: 回滚只需把 `frontend` / `frontend-vue` 两条互换（后端零改动），重启即生效。
 STATIC_CANDIDATES = (
-    ROOT_DIR / "frontend" / "dist",      # 开发环境
-    ROOT_DIR / "static",                 # 打包环境
+    # P5 起首选新 Vue 版（开发环境）
+    ROOT_DIR / "frontend-vue" / "dist",
+    # 旧 React 版：回滚兜底，已冻结（tag: frontend-react-final），不再维护
+    ROOT_DIR / "frontend" / "dist",
+    # 打包环境（`packaging/build.ps1` 把 frontend-vue/dist 拷成 static）
+    ROOT_DIR / "static",
 )
 
 # ---------------- 支持的媒体格式（FR-M1 / FR-M2）----------------
@@ -219,7 +225,12 @@ def ensure_dirs() -> None:
 
 
 def static_dir() -> Path | None:
-    """返回可用的前端静态目录（不存在则 None）。"""
+    """返回可用的前端静态目录（不存在则 None）。
+
+    按 `STATIC_CANDIDATES` 的顺序**取第一个含 index.html 的目录**——这个语义
+    是 P5 回滚策略的基石（改候选顺序 + 重启即回滚），**不要改成「后者优先」
+    或「合并多目录」**。
+    """
     for candidate in STATIC_CANDIDATES:
         if (candidate / "index.html").is_file():
             return candidate

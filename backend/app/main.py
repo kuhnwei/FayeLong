@@ -286,5 +286,5 @@ else:
             "app": settings.app_name,
             "version": __version__,
             "docs": "/docs",
-            "hint": "前端尚未构建：在 frontend 目录执行 npm run build 后即可单端口访问",
+            "hint": "前端尚未构建：在 frontend-vue 目录执行 npm run build 后即可单端口访问",
         }
