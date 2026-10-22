@@ -45,6 +45,12 @@ rm -rf "$APP_ROOT/backend" "$APP_ROOT/frontend/dist"
 mv "$APP_ROOT/backend.new" "$APP_ROOT/backend"
 mv "$APP_ROOT/frontend/dist.new" "$APP_ROOT/frontend/dist"
 
+# 对齐后端静态目录候选（backend/app/core/config.py 的 STATIC_CANDIDATES 只认
+# frontend-vue/dist 与 static，而本脚本的产物落在 frontend/dist）——
+# 用软链桥接，幂等；缺了这步首页会回落成 JSON「前端尚未构建」。
+mkdir -p "$APP_ROOT/frontend-vue"
+ln -sfn "$APP_ROOT/frontend/dist" "$APP_ROOT/frontend-vue/dist"
+
 echo "==> 同步依赖（requirements 有变化时才真正安装）"
 "$APP_ROOT/venv/bin/pip" install -q -i "$PYPI_MIRROR" \
 	-r "$APP_ROOT/backend/requirements.txt" \
