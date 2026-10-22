@@ -125,6 +125,15 @@ const accuracyTone = computed(() =>
 const wrongItems = computed<VocabItem[]>(() =>
   questions.value.filter((_, i) => results.value[i] === false).map((q) => q.item),
 )
+/** 当前连对（从最近一次作答往前数，纯展示用，不参与判分） */
+const streak = computed(() => {
+  let n = 0
+  for (let i = results.value.length - 1; i >= 0; i -= 1) {
+    if (results.value[i]) n += 1
+    else break
+  }
+  return n
+})
 const progress = computed(() =>
   questions.value.length
     ? ((index.value + (revealed.value ? 1 : 0)) / questions.value.length) * 100
@@ -274,6 +283,15 @@ function optionTone(option: string): string {
 }
 
 /** 选项的语义态（T03 解耦锚点：verify_vocab_practice 优先读 data-tone，class fallback 是 emerald）。 */
+/** 选项左侧字母圆的配色（纯视觉，不参与判分） */
+function optionKeyClass(option: string): string {
+  if (revealed.value && option === current.value?.correctOption) {
+    return 'border-emerald-300 bg-emerald-600 text-white'
+  }
+  if (revealed.value && option === picked.value) return 'border-red-300 bg-red-500 text-white'
+  return 'border-ink/30 bg-white text-ink-2'
+}
+
 function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
   if (revealed.value && option === current.value?.correctOption) return 'correct'
   if (revealed.value && option === picked.value) return 'wrong'
@@ -285,7 +303,7 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
   <!-- 加载 -->
   <div
     v-if="isLoading"
-    class="rounded-xl border border-ink bg-white px-3 py-10 text-center text-[13px] text-ink-3 sm:px-5"
+    class="mx-auto w-full max-w-[680px] rounded-xl border border-ink bg-white px-3 py-10 text-center text-[13px] text-ink-3 sm:px-5"
   >
     加载生词本…
   </div>
@@ -293,13 +311,13 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
   <!-- 错误 -->
   <div
     v-else-if="isError"
-    class="rounded-xl border border-red-100 bg-red-50 px-3 py-10 text-center text-[13px] text-red-600 sm:px-5"
+    class="mx-auto w-full max-w-[680px] rounded-xl border border-red-100 bg-red-50 px-3 py-10 text-center text-[13px] text-red-600 sm:px-5"
   >
     {{ errorText }}
   </div>
 
   <!-- 生词不足 -->
-  <div v-else-if="!withMeaning.length" data-practice-phase="empty" class="space-y-4">
+  <div v-else-if="!withMeaning.length" data-practice-phase="empty" class="mx-auto w-full max-w-[680px] space-y-4">
     <VocabPracticeHeader :can-back="false" />
     <div class="rounded-xl border border-ink bg-white px-3 py-12 text-center sm:px-5">
       <BookIcon class-name="mx-auto h-8 w-8 text-ink-3" />
@@ -319,7 +337,7 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
   </div>
 
   <!-- 设置 -->
-  <div v-else-if="phase === 'setup'" data-practice-phase="setup" class="space-y-5">
+  <div v-else-if="phase === 'setup'" data-practice-phase="setup" class="mx-auto w-full max-w-[680px] space-y-5">
     <VocabPracticeHeader :can-back="false" />
 
     <div class="space-y-5 rounded-xl border border-ink bg-white p-5">
@@ -425,7 +443,7 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
   </div>
 
   <!-- 结果 -->
-  <div v-else-if="phase === 'result'" data-practice-phase="result" class="space-y-5">
+  <div v-else-if="phase === 'result'" data-practice-phase="result" class="mx-auto w-full max-w-[680px] space-y-5">
     <VocabPracticeHeader :can-back="true" @back="backToSetup" />
 
     <div class="rounded-xl border border-ink bg-white p-6 text-center">
@@ -503,13 +521,13 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
   <!-- 没有可用题目 -->
   <div
     v-else-if="!current"
-    class="rounded-xl border border-ink bg-white px-3 py-10 text-center text-[13px] text-ink-3 sm:px-5"
+    class="mx-auto w-full max-w-[680px] rounded-xl border border-ink bg-white px-3 py-10 text-center text-[13px] text-ink-3 sm:px-5"
   >
     没有可用题目。
   </div>
 
   <!-- 答题 -->
-  <div v-else-if="current" data-practice-phase="quiz" class="space-y-5">
+  <div v-else-if="current" data-practice-phase="quiz" class="mx-auto w-full max-w-[680px] space-y-5">
     <VocabPracticeHeader :can-back="true" @back="backToSetup" />
 
     <!-- 进度 -->
@@ -568,7 +586,7 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
       <p
         v-else-if="isSpelling"
         data-practice-prompt
-        class="mt-3 text-[17px] leading-relaxed text-ink"
+        class="mt-3 text-[26px] font-extrabold leading-[1.45] tracking-[0.2px] text-ink"
       >
         {{ current.item.translation }}
       </p>
@@ -642,17 +660,27 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
           </template>
         </div>
 
-        <div v-else class="grid gap-2 sm:grid-cols-2">
+        <div v-else class="grid gap-2.5 sm:grid-cols-2">
           <button
-            v-for="option in (current.options ?? [])"
+            v-for="(option, oi) in (current.options ?? [])"
             :key="option"
             type="button"
             data-practice-option
             :data-tone="optionDataTone(option)"
             :disabled="revealed"
-            :class="`rounded-lg border px-3 py-2.5 text-left text-[12px] leading-relaxed text-ink transition-colors disabled:cursor-default ${optionTone(option)}`"
+            :class="`flex items-center gap-3 rounded-[14px] border-2 px-4 py-3.5 text-left transition-colors disabled:cursor-default ${optionTone(option)}`"
             @click="choose(option)"
-          >{{ option }}<CheckIcon v-if="revealed && option === current.correctOption" class-name="ml-1 inline h-3.5 w-3.5 align-[-2px] text-emerald-600" /><CloseIcon v-if="revealed && option === picked && option !== current.correctOption" class-name="ml-1 inline h-3.5 w-3.5 align-[-2px] text-red-500" /></button>
+          >
+            <span
+              class="opt-key grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 text-[12px] font-extrabold"
+              :class="optionKeyClass(option)"
+              :data-key="String.fromCharCode(65 + oi)"
+              aria-hidden="true"
+            />
+            <span class="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-ink">{{ option }}</span>
+            <CheckIcon v-if="revealed && option === current.correctOption" class-name="h-4 w-4 shrink-0 text-emerald-600" />
+            <CloseIcon v-if="revealed && option === picked && option !== current.correctOption" class-name="h-4 w-4 shrink-0 text-red-500" />
+          </button>
         </div>
 
         <!-- 反馈 -->
@@ -660,8 +688,8 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
           v-if="revealed"
           :data-practice-feedback="answered ? 'correct' : 'wrong'"
           :class="[
-            'mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-3 py-2.5 text-[12px]',
-            answered ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700',
+            'mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] border-2 px-4 py-3 text-[12px]',
+            answered ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-red-300 bg-red-50 text-red-700',
           ]"
         >
           <span class="flex items-center gap-1 font-medium">
@@ -710,6 +738,26 @@ function optionDataTone(option: string): 'correct' | 'wrong' | 'neutral' {
         >
           释义：{{ current.item.translation }}
         </p>
+      </div>
+    </div>
+
+    <!-- 本轮统计（纯展示，不参与判分） -->
+    <div class="flex items-stretch gap-2">
+      <div class="flex-1 rounded-xl border-2 border-ink/20 bg-white py-2 text-center">
+        <b class="block text-[16px] font-extrabold leading-tight tabular-nums text-ink">{{ results.length }}</b>
+        <span class="text-[10.5px] text-ink-3">已答</span>
+      </div>
+      <div class="flex-1 rounded-xl border-2 border-ink/20 bg-white py-2 text-center">
+        <b class="block text-[16px] font-extrabold leading-tight tabular-nums text-emerald-600">{{ correctCount }}</b>
+        <span class="text-[10.5px] text-ink-3">答对</span>
+      </div>
+      <div class="flex-1 rounded-xl border-2 border-ink/20 bg-white py-2 text-center">
+        <b class="block text-[16px] font-extrabold leading-tight tabular-nums text-ink">{{ accuracy }}%</b>
+        <span class="text-[10.5px] text-ink-3">正确率</span>
+      </div>
+      <div class="flex-1 rounded-xl border-2 border-ink/20 bg-lemon-100 py-2 text-center">
+        <b class="block text-[16px] font-extrabold leading-tight tabular-nums text-ink">{{ streak }}</b>
+        <span class="text-[10.5px] text-ink-3">连对</span>
       </div>
     </div>
   </div>

@@ -312,3 +312,9 @@
     }
   }
 }
+
+/* 练习页选项字母：用伪元素渲染，避免污染 textContent
+   （verify_vocab_practice 用 textContent.startsWith 匹配正确选项） */
+.opt-key::before {
+  content: attr(data-key);
+}
