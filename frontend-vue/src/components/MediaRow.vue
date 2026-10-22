@@ -80,14 +80,14 @@ function onToggle(event: Event) {
     <!-- 多选态：左侧 checkbox，点击热区 32×32 -->
     <label
       v-if="selectable"
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-slate-50"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-lemon-100"
       title="选择此素材"
     >
       <input
         type="checkbox"
         :checked="checked"
         :aria-label="`选择「${media.title}」`"
-        class="h-4 w-4 accent-slate-900"
+        class="h-4 w-4 accent-[var(--lemon-500)]"
         @change="onToggle"
       />
     </label>
@@ -99,8 +99,8 @@ function onToggle(event: Event) {
       :class="[
         'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors',
         playable
-          ? 'bg-slate-900 text-white hover:bg-slate-700'
-          : 'cursor-not-allowed bg-slate-100 text-slate-300',
+          ? 'bg-lemon-400 text-ink hover:bg-lemon-300'
+          : 'cursor-not-allowed bg-cream-2 text-ink-3',
       ]"
       @click="emit('play', media)"
     >
@@ -113,18 +113,18 @@ function onToggle(event: Event) {
           v-if="editing"
           v-focus
           v-model="draft"
-          class="min-w-0 flex-1 rounded border border-slate-300 px-2 py-0.5 text-[14px] outline-none focus:border-slate-500"
+          class="min-w-0 flex-1 rounded border border-ink-3 px-2 py-0.5 text-[14px] outline-none focus:border-ink"
           @blur="commit"
           @keydown.enter="commit"
           @keydown.esc="cancelEdit"
         />
-        <span v-else class="truncate text-[14px] font-medium text-slate-900">{{ media.title }}</span>
+        <span v-else data-media-title class="truncate text-[14px] font-medium text-ink">{{ media.title }}</span>
 
         <!-- CategoryBadge：由父级传进来的分类名渲染，未分类是灰字 -->
-        <span v-if="!categoryName" class="shrink-0 text-[10px] text-slate-300">未分类</span>
+        <span v-if="!categoryName" class="shrink-0 text-[10px] text-ink-3">未分类</span>
         <span
           v-else
-          class="inline-block max-w-[7rem] shrink-0 truncate rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] text-slate-600"
+          class="inline-block max-w-[7rem] shrink-0 truncate rounded bg-cream-2 px-1.5 py-0.5 align-middle text-[10px] text-ink-2"
         >{{ categoryName }}</span>
 
         <!-- TypeBadge -->
@@ -136,7 +136,7 @@ function onToggle(event: Event) {
         >{{ isVideo ? '视频·仅音轨' : '音频' }}</span>
       </div>
 
-      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-400">
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-3">
         <span class="tabular-nums">{{ formatDuration(media.duration_ms) }}</span>
         <span>{{ formatBytes(media.size_bytes) }}</span>
         <span>{{ media.origin === 'inbox' ? '素材目录导入' : '本地上传' }}</span>
@@ -157,13 +157,13 @@ function onToggle(event: Event) {
         v-else-if="PROCESSING_STATUSES.includes(media.status)"
         class="mt-2"
       >
-        <div class="flex items-center justify-between text-[11px] text-slate-400">
+        <div class="flex items-center justify-between text-[11px] text-ink-3">
           <span>{{ processingLabel }}</span>
           <span class="tabular-nums">{{ media.progress }}%</span>
         </div>
-        <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+        <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-cream-2">
           <div
-            class="h-full rounded-full bg-slate-900 transition-[width] duration-300"
+            class="h-full rounded-full bg-lemon-400 transition-[width] duration-300"
             :style="{ width: Math.max(2, media.progress) + '%' }"
           />
         </div>
@@ -183,8 +183,8 @@ function onToggle(event: Event) {
         :class="[
           'flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
           playable
-            ? 'border-slate-200 text-slate-600 hover:bg-slate-50'
-            : 'pointer-events-none border-slate-100 text-slate-300',
+            ? 'border-ink text-ink-2 hover:bg-lemon-100'
+            : 'pointer-events-none border-cream-2 text-ink-3',
         ]"
         title="进入学习页"
       >
@@ -197,7 +197,7 @@ function onToggle(event: Event) {
         type="button"
         :disabled="busy"
         title="重新处理"
-        class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+        class="rounded-lg p-2 text-ink-3 transition-colors hover:bg-lemon-100 hover:text-ink disabled:opacity-40"
         @click="emit('retry', media)"
       >
         <RefreshIcon class-name="h-4 w-4" />
@@ -206,7 +206,7 @@ function onToggle(event: Event) {
       <button
         type="button"
         title="重命名"
-        class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+        class="rounded-lg p-2 text-ink-3 transition-colors hover:bg-lemon-100 hover:text-ink"
         @click="startRename"
       >
         <PencilIcon class-name="h-4 w-4" />
@@ -216,7 +216,7 @@ function onToggle(event: Event) {
         type="button"
         :disabled="busy"
         title="删除"
-        class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+        class="rounded-lg p-2 text-ink-3 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
         @click="emit('delete', media)"
       >
         <TrashIcon class-name="h-4 w-4" />

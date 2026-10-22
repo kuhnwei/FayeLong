@@ -35,14 +35,14 @@ const chipClass = (active: boolean, muted = false) =>
   [
     'flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] transition-colors',
     active
-      ? 'border-slate-900 bg-slate-900 text-white'
+      ? 'border-ink bg-lemon-400 text-ink'
       : muted
-        ? 'border-slate-200 bg-white text-slate-400'
-        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-900',
+        ? 'border-ink bg-white text-ink-3'
+        : 'border-ink bg-white text-ink-2 hover:border-ink-3 hover:text-ink',
   ].join(' ')
 
 const countClass = (active: boolean) =>
-  ['tabular-nums', active ? 'text-white/70' : 'text-slate-400'].join(' ')
+  ['tabular-nums', active ? 'text-ink-3' : 'text-ink-3'].join(' ')
 
 const entries = computed<{ key: string; label: string; count: number; value: CategoryFilter }[]>(
   () => [
@@ -61,7 +61,7 @@ const entries = computed<{ key: string; label: string; count: number; value: Cat
   >
     <span
       v-if="loading && items.length === 0"
-      class="h-8 w-24 shrink-0 animate-pulse rounded-full bg-slate-100"
+      class="h-8 w-24 shrink-0 animate-pulse rounded-full bg-cream-2"
     />
 
     <button
@@ -69,6 +69,7 @@ const entries = computed<{ key: string; label: string; count: number; value: Cat
       :key="entry.key"
       type="button"
       :aria-pressed="selected === entry.value"
+      :data-selected="selected === entry.value ? 'true' : 'false'"
       :class="chipClass(selected === entry.value, entry.count === 0 && selected !== entry.value)"
       :title="entry.label === '全部' ? '显示全部素材' : `只看「${entry.label}」`"
       @click="emit('select', entry.value)"
@@ -79,7 +80,7 @@ const entries = computed<{ key: string; label: string; count: number; value: Cat
 
     <button
       type="button"
-      class="flex h-8 shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-[12px] text-slate-500 transition-colors hover:border-slate-500 hover:text-slate-900"
+      class="flex h-8 shrink-0 items-center gap-1 rounded-full border border-dashed border-ink-3 px-3 text-[12px] text-ink-2 transition-colors hover:border-ink hover:text-ink"
       @click="emit('manage')"
     >
       <TagIcon class-name="h-3.5 w-3.5" />

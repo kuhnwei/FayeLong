@@ -326,15 +326,15 @@ function exitBatchMode() {
   <div class="space-y-5">
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 class="text-[15px] font-medium text-slate-900">媒体库</h2>
-        <p class="mt-1 text-[13px] text-slate-500">
+        <h2 class="text-[15px] font-medium text-ink">媒体库</h2>
+        <p class="mt-1 text-[13px] text-ink-2">
           导入英语音频（视频仅取音轨），系统自动转码为标准音频，后续将自动识别原文并翻译。
         </p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-600 transition-colors hover:bg-slate-50"
+          class="flex items-center gap-1.5 rounded-lg border border-ink bg-white px-3 py-2 text-[13px] text-ink-2 transition-colors hover:bg-lemon-100"
           @click="inboxOpen = !inboxOpen"
         >
           <FolderIcon class-name="h-4 w-4" />
@@ -342,7 +342,7 @@ function exitBatchMode() {
         </button>
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] text-white transition-colors hover:bg-slate-700"
+          class="flex items-center gap-1.5 rounded-lg bg-lemon-400 px-3.5 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-300"
           @click="fileInputRef?.click()"
         >
           <UploadIcon class-name="h-4 w-4" />
@@ -378,7 +378,7 @@ function exitBatchMode() {
     <!-- 拖拽上传区 + 按类导入 -->
     <div class="space-y-2">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="text-[12px] text-slate-500">
+        <span class="text-[12px] text-ink-2">
           上传时可指定分类：本轮所选文件统一归入该分类
         </span>
         <CategorySelect v-model="uploadCategory" :items="categories" label="导入到分类" />
@@ -389,7 +389,7 @@ function exitBatchMode() {
         tabindex="0"
         :class="[
           'cursor-pointer rounded-xl border border-dashed px-3 py-5 text-center transition-colors sm:px-5 sm:py-6',
-          dragging ? 'border-slate-900 bg-slate-50' : 'border-slate-300 bg-white hover:border-slate-400',
+          dragging ? 'border-ink bg-cream' : 'border-ink-3 bg-white hover:border-ink-3',
         ]"
         @click="fileInputRef?.click()"
         @keydown.enter="fileInputRef?.click()"
@@ -398,12 +398,12 @@ function exitBatchMode() {
         @dragleave="dragging = false"
         @drop="onDrop"
       >
-        <p class="text-[13px] text-slate-500">
+        <p class="text-[13px] text-ink-2">
           <!-- 手机上没有拖拽，改成「点一下选文件」；桌面保留原提示 -->
           <span class="hidden sm:inline">把音频 / 视频文件拖到这里，或点右上角「上传文件」</span>
           <span class="sm:hidden">点这里选择手机里的音频 / 视频</span>
         </p>
-        <p class="mt-1 text-[12px] text-slate-400">
+        <p class="mt-1 text-[12px] text-ink-3">
           支持 mp3 / wav / m4a / flac / aac / ogg 与 mp4 / mkv / mov / webm 等（视频仅提取音轨）
         </p>
       </div>
@@ -423,14 +423,14 @@ function exitBatchMode() {
     </div>
 
     <!-- 上传进度 -->
-    <div v-if="uploads.length > 0" class="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+    <div v-if="uploads.length > 0" class="space-y-2 rounded-xl border border-ink bg-white p-4">
       <div v-for="task in uploads" :key="task.id">
         <div class="flex items-center justify-between text-[12px]">
-          <span class="truncate text-slate-600">{{ task.name }}</span>
+          <span class="truncate text-ink-2">{{ task.name }}</span>
           <span
             :class="[
               'shrink-0 tabular-nums',
-              task.status === 'error' ? 'text-red-600' : 'text-slate-400',
+              task.status === 'error' ? 'text-red-600' : 'text-ink-3',
             ]"
           >
             {{
@@ -442,11 +442,11 @@ function exitBatchMode() {
             }}
           </span>
         </div>
-        <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+        <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-cream-2">
           <div
             :class="[
               'h-full rounded-full transition-[width]',
-              task.status === 'error' ? 'bg-red-400' : 'bg-slate-900',
+              task.status === 'error' ? 'bg-red-400' : 'bg-lemon-400',
             ]"
             :style="{ width: (task.status === 'error' ? 100 : task.percent) + '%' }"
           />
@@ -455,21 +455,21 @@ function exitBatchMode() {
     </div>
 
     <!-- 素材目录导入面板 -->
-    <div v-if="inboxOpen" class="rounded-xl border border-slate-200 bg-white p-5">
+    <div v-if="inboxOpen" class="rounded-xl border border-ink bg-white p-5">
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
-          <h3 class="text-sm font-medium text-slate-900">从素材目录导入</h3>
-          <p class="mt-1 text-[12px] leading-relaxed text-slate-500">
+          <h3 class="text-sm font-medium text-ink">从素材目录导入</h3>
+          <p class="mt-1 text-[12px] leading-relaxed text-ink-2">
             把音频 / 视频文件放进下面这个目录，然后点「重新扫描」即可批量导入（原文件保留在目录里）。
           </p>
-          <code class="mt-2 block break-all rounded bg-slate-50 px-2 py-1.5 text-[11px] text-slate-600">
+          <code class="mt-2 block break-all rounded bg-cream px-2 py-1.5 text-[11px] text-ink-2">
             {{ healthData?.paths.inbox_dir ?? '读取中…' }}
           </code>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+            class="flex items-center gap-1.5 rounded-lg border border-ink px-2.5 py-1.5 text-xs text-ink-2 hover:bg-lemon-100"
             @click="void refetchInbox()"
           >
             <RefreshIcon class-name="h-3.5 w-3.5" />
@@ -477,7 +477,7 @@ function exitBatchMode() {
           </button>
           <button
             type="button"
-            class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+            class="rounded-lg p-1.5 text-ink-3 hover:bg-lemon-100"
             @click="inboxOpen = false"
           >
             <CloseIcon class-name="h-4 w-4" />
@@ -485,11 +485,11 @@ function exitBatchMode() {
         </div>
       </div>
 
-      <div class="mt-3 max-h-64 overflow-auto rounded-lg border border-slate-100">
-        <p v-if="inboxLoading" class="px-3 py-4 text-[13px] text-slate-400">扫描中…</p>
+      <div class="mt-3 max-h-64 overflow-auto rounded-lg border border-cream-2">
+        <p v-if="inboxLoading" class="px-3 py-4 text-[13px] text-ink-3">扫描中…</p>
         <p
           v-if="!inboxLoading && inboxItems.length === 0"
-          class="px-3 py-4 text-[13px] text-slate-400"
+          class="px-3 py-4 text-[13px] text-ink-3"
         >
           目录里还没有文件。把素材拷进去后点「重新扫描」。
         </p>
@@ -497,15 +497,15 @@ function exitBatchMode() {
           v-for="item in inboxItems"
           :key="item.path"
           :class="[
-            'flex cursor-pointer items-center gap-3 border-b border-slate-50 px-3 py-2 last:border-0',
-            item.imported || !item.supported ? 'cursor-not-allowed opacity-50' : 'hover:bg-slate-50',
+            'flex cursor-pointer items-center gap-3 border-b border-cream-2 px-3 py-2 last:border-0',
+            item.imported || !item.supported ? 'cursor-not-allowed opacity-50' : 'hover:bg-lemon-100',
           ]"
         >
           <input
             type="checkbox"
             :disabled="item.imported || !item.supported"
             :checked="selected.includes(item.path)"
-            class="accent-slate-900"
+            class="accent-[var(--lemon-500)]"
             @change="
               (event) => {
                 const checked = (event.target as HTMLInputElement).checked
@@ -515,8 +515,8 @@ function exitBatchMode() {
               }
             "
           />
-          <span class="min-w-0 flex-1 truncate text-[13px] text-slate-700">{{ item.name }}</span>
-          <span class="shrink-0 text-[11px] text-slate-400">{{ formatBytes(item.size_bytes) }}</span>
+          <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ item.name }}</span>
+          <span class="shrink-0 text-[11px] text-ink-3">{{ formatBytes(item.size_bytes) }}</span>
           <span v-if="item.imported" class="shrink-0 text-[11px] text-emerald-600">已导入</span>
           <span v-if="!item.supported && !item.imported" class="shrink-0 text-[11px] text-amber-600">
             格式不支持
@@ -525,7 +525,7 @@ function exitBatchMode() {
       </div>
 
       <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <span class="text-[12px] text-slate-400">
+        <span class="text-[12px] text-ink-3">
           共 {{ inboxItems.length }} 个文件，已选 {{ selected.length }} 个
         </span>
         <div class="flex flex-wrap items-center gap-2">
@@ -533,7 +533,7 @@ function exitBatchMode() {
           <button
             type="button"
             :disabled="selected.length === 0 || importMutation.isPending.value"
-            class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            class="rounded-lg border border-ink px-3 py-1.5 text-xs text-ink-2 hover:bg-lemon-100 disabled:opacity-40"
             @click="
               importMutation.mutate({
                 files: selected,
@@ -546,7 +546,7 @@ function exitBatchMode() {
           <button
             type="button"
             :disabled="importMutation.isPending.value"
-            class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white hover:bg-slate-700 disabled:opacity-40"
+            class="rounded-lg bg-lemon-400 px-3 py-1.5 text-xs text-ink hover:bg-lemon-300 disabled:opacity-40"
             @click="
               importMutation.mutate({
                 files: undefined,
@@ -561,15 +561,15 @@ function exitBatchMode() {
     </div>
 
     <!-- 列表 -->
-    <div class="rounded-xl border border-slate-200 bg-white">
-      <div class="border-b border-slate-100 px-3 py-3 sm:px-5">
+    <div class="rounded-xl border border-ink bg-white">
+      <div class="border-b border-cream-2 px-3 py-3 sm:px-5">
         <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-          <h3 class="text-sm font-medium text-slate-900">
+          <h3 class="text-sm font-medium text-ink">
             已导入素材
-            <span class="ml-1 text-[12px] font-normal text-slate-400">· {{ scopeLabel }}</span>
-            <span class="ml-2 text-[12px] font-normal text-slate-400">共 {{ items.length }} 个</span>
+            <span class="ml-1 text-[12px] font-normal text-ink-3">· {{ scopeLabel }}</span>
+            <span class="ml-2 text-[12px] font-normal text-ink-3">共 {{ items.length }} 个</span>
           </h3>
-          <span v-if="processingCount > 0" class="text-[12px] text-slate-500">
+          <span v-if="processingCount > 0" class="text-[12px] text-ink-2">
             {{ processingCount }} 个正在处理…
           </span>
 
@@ -577,20 +577,20 @@ function exitBatchMode() {
           <div class="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <div class="relative">
               <SearchIcon
-                class-name="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                class-name="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
               />
               <input
                 v-model="keyword"
                 placeholder="搜索标题 / 文件名…"
-                class="w-[180px] rounded-lg border border-slate-200 py-1.5 pl-8 pr-3 text-[12px] text-slate-700 outline-none transition-colors focus:border-slate-400"
+                class="w-[180px] rounded-lg border border-ink py-1.5 pl-8 pr-3 text-[12px] text-ink outline-none transition-colors focus:border-ink"
               />
             </div>
-            <div class="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5">
-              <SortIcon class-name="h-3.5 w-3.5 text-slate-400" />
+            <div class="flex items-center gap-1 rounded-lg border border-ink px-2 py-1.5">
+              <SortIcon class-name="h-3.5 w-3.5 text-ink-3" />
               <select
                 :value="sort"
                 title="排序方式"
-                class="bg-transparent text-[12px] text-slate-600 outline-none"
+                class="bg-transparent text-[12px] text-ink-2 outline-none"
                 @change="onSortChange"
               >
                 <option value="recent">最近导入</option>
@@ -604,8 +604,8 @@ function exitBatchMode() {
               :class="[
                 'flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[12px] transition-colors',
                 batchMode
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+                  ? 'border-ink bg-lemon-400 text-ink'
+                  : 'border-ink text-ink-2 hover:bg-lemon-100',
               ]"
               @click="enterBatchMode"
             >
@@ -638,9 +638,9 @@ function exitBatchMode() {
       <!-- 批量操作条 -->
       <div
         v-if="batchMode"
-        class="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 sm:px-5"
+        class="flex flex-wrap items-center gap-2 border-b border-cream-2 bg-cream px-3 py-2 sm:px-5"
       >
-        <span class="text-[12px] text-slate-600">
+        <span class="text-[12px] text-ink-2">
           已选 <span class="tabular-nums">{{ batchIds.length }}</span> 项
         </span>
 
@@ -650,7 +650,7 @@ function exitBatchMode() {
             :disabled="batchIds.length === 0"
             aria-haspopup="menu"
             :aria-expanded="moveMenuOpen"
-            class="flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-[12px] text-white transition-colors hover:bg-slate-700 disabled:opacity-40"
+            class="flex h-8 items-center gap-1.5 rounded-lg bg-lemon-400 px-3 text-[12px] text-ink transition-colors hover:bg-lemon-300 disabled:opacity-40"
             @click="moveMenuOpen = !moveMenuOpen"
           >
             移动到分类
@@ -662,14 +662,14 @@ function exitBatchMode() {
             <div class="fixed inset-0 z-20 hidden sm:block" @click="moveMenuOpen = false" />
             <div
               role="menu"
-              class="absolute left-0 z-30 mt-1 hidden max-h-72 w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg sm:block"
+              class="absolute left-0 z-30 mt-1 hidden max-h-72 w-56 overflow-y-auto rounded-xl border border-ink bg-white py-1 shadow-lg sm:block"
             >
               <button
                 v-for="option in moveOptions"
                 :key="option.id ?? 'none'"
                 type="button"
                 role="menuitem"
-                class="flex h-8 w-full items-center px-3 text-left text-[12px] text-slate-600 transition-colors hover:bg-slate-50"
+                class="flex h-8 w-full items-center px-3 text-left text-[12px] text-ink-2 transition-colors hover:bg-lemon-100"
                 @click="moveMutation.mutate({ ids: batchIds, categoryId: option.id })"
               >
                 <span class="truncate">{{ option.name }}</span>
@@ -678,19 +678,19 @@ function exitBatchMode() {
 
             <!-- 移动端：底部弹层（触摸目标 ≥32px） -->
             <div
-              class="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 sm:hidden"
+              class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:hidden"
               @click="moveMenuOpen = false"
             >
               <div class="w-full rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)]" @click.stop>
-                <p class="px-4 py-3 text-[13px] font-medium text-slate-900">
+                <p class="px-4 py-3 text-[13px] font-medium text-ink">
                   把 {{ batchIds.length }} 个素材移动到…
                 </p>
-                <div class="max-h-[55dvh] overflow-y-auto border-t border-slate-100">
+                <div class="max-h-[55dvh] overflow-y-auto border-t border-cream-2">
                   <button
                     v-for="option in moveOptions"
                     :key="option.id ?? 'none'"
                     type="button"
-                    class="flex w-full items-center px-4 py-3 text-left text-[14px] text-slate-700 active:bg-slate-50"
+                    class="flex w-full items-center px-4 py-3 text-left text-[14px] text-ink active:bg-lemon-100"
                     @click="moveMutation.mutate({ ids: batchIds, categoryId: option.id })"
                   >
                     <span class="truncate">{{ option.name }}</span>
@@ -698,7 +698,7 @@ function exitBatchMode() {
                 </div>
                 <button
                   type="button"
-                  class="w-full border-t border-slate-100 px-4 py-3 text-[14px] text-slate-500"
+                  class="w-full border-t border-cream-2 px-4 py-3 text-[14px] text-ink-2"
                   @click="moveMenuOpen = false"
                 >
                   取消
@@ -710,13 +710,13 @@ function exitBatchMode() {
 
         <button
           type="button"
-          class="flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-[12px] text-slate-600 transition-colors hover:bg-slate-50"
+          class="flex h-8 items-center rounded-lg border border-ink bg-white px-3 text-[12px] text-ink-2 transition-colors hover:bg-lemon-100"
           @click="exitBatchMode"
         >
           取消
         </button>
 
-        <span v-if="moveMutation.isPending.value" class="text-[12px] text-slate-500">移动中…</span>
+        <span v-if="moveMutation.isPending.value" class="text-[12px] text-ink-2">移动中…</span>
       </div>
 
       <ListSkeleton v-if="mediaLoading" />
@@ -724,7 +724,7 @@ function exitBatchMode() {
         读取失败：{{ (mediaError as Error).message }}
       </p>
       <div v-if="!mediaLoading && items.length === 0" class="px-3 py-12 text-center sm:px-5">
-        <p class="text-[13px] text-slate-400">
+        <p class="text-[13px] text-ink-3">
           {{
             categoryFilter === null
               ? '还没有素材。上传一个英语音频，开始你的第一课。'
@@ -734,12 +734,12 @@ function exitBatchMode() {
       </div>
       <p
         v-if="!mediaLoading && items.length > 0 && visible.length === 0"
-        class="px-3 py-12 text-center text-[13px] text-slate-400 sm:px-5"
+        class="px-3 py-12 text-center text-[13px] text-ink-3 sm:px-5"
       >
         没有匹配「{{ keyword }}」的素材。
       </p>
 
-      <div v-for="media in visible" :key="media.id" class="border-b border-slate-50 last:border-0">
+      <div v-for="media in visible" :key="media.id" class="border-b border-cream-2 last:border-0">
         <MediaRow
           :media="media"
           :category-name="categoryNameFor(media)"
@@ -767,14 +767,14 @@ function exitBatchMode() {
     />
 
     <!-- 环境自检 -->
-    <details class="rounded-xl border border-slate-200 bg-white px-3 py-4 sm:px-5">
-      <summary class="cursor-pointer text-sm font-medium text-slate-900">环境自检</summary>
+    <details class="rounded-xl border border-ink bg-white px-3 py-4 sm:px-5">
+      <summary class="cursor-pointer text-sm font-medium text-ink">环境自检</summary>
       <ul class="mt-3 space-y-2 text-[13px]">
         <li class="flex items-center gap-2">
-          <span :class="healthData?.checks.database ? 'text-green-600' : 'text-slate-400'">
+          <span :class="healthData?.checks.database ? 'text-green-600' : 'text-ink-3'">
             {{ healthData?.checks.database ? '✓' : '○' }}
           </span>
-          <span class="text-slate-600">SQLite 数据库已就绪</span>
+          <span class="text-ink-2">SQLite 数据库已就绪</span>
         </li>
         <li class="flex items-center gap-2">
           <span
@@ -786,7 +786,7 @@ function exitBatchMode() {
           >
             {{ healthData?.checks.ffmpeg && healthData?.checks.ffprobe ? '✓' : '!' }}
           </span>
-          <span class="text-slate-600">
+          <span class="text-ink-2">
             ffmpeg / ffprobe
             {{
               healthData && !(healthData.checks.ffmpeg && healthData.checks.ffprobe)
@@ -805,7 +805,7 @@ function exitBatchMode() {
           >
             {{ healthData?.checks.asr && healthData?.checks.asr_model ? '✓' : '!' }}
           </span>
-          <span class="text-slate-600">
+          <span class="text-ink-2">
             语音识别 faster-whisper
             {{ healthData?.asr.model ? `（${healthData.asr.model}）` : '' }}
             {{
@@ -824,7 +824,7 @@ function exitBatchMode() {
           <span :class="healthData?.checks.dict ? 'text-green-600' : 'text-amber-500'">
             {{ healthData?.checks.dict ? '✓' : '!' }}
           </span>
-          <span class="text-slate-600">
+          <span class="text-ink-2">
             离线词典 ECDICT
             {{
               healthData?.dict.entries
@@ -836,14 +836,14 @@ function exitBatchMode() {
           </span>
         </li>
         <li class="flex items-start gap-2">
-          <span class="text-slate-400">○</span>
-          <span class="text-slate-600">
+          <span class="text-ink-3">○</span>
+          <span class="text-ink-2">
             在线翻译引擎：{{ healthData?.config.translate_engines.join(' → ') ?? '—' }}
           </span>
         </li>
         <li class="flex items-start gap-2">
-          <span class="text-slate-400">○</span>
-          <span class="break-all text-slate-600">
+          <span class="text-ink-3">○</span>
+          <span class="break-all text-ink-2">
             数据目录：{{ healthData?.paths.data_dir ?? '—' }}
           </span>
         </li>
