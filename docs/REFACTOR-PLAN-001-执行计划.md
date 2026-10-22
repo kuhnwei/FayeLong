@@ -409,23 +409,41 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 ## 8. P5 —— 切换上线（1.5 天）
 
 ### P5-1 双跑比对（0.5 天）
-- [ ] 旧 Vue? 否 —— 旧 React 跑 5173、新 Vue 跑 5174，**连同一后端**逐页比对
+- [x] 旧 React 跑 5173、新 Vue 跑 5174，**连同一后端**逐页比对
 - ⚠️ 改完前端源码**必须 `vite build` 再跑浏览器验证**，否则读到旧 bundle（历史高频坑）
+- **实际做法**：隔离后端 `run_isolated_backend.py --port 8000`（**必须占 8000** —— 旧 React 的 `vite.config.ts` 把代理目标写死在 `127.0.0.1:8000`，新 Vue 才支持 `FAYELONG_API_TARGET`）+ React dev 5173 + Vue dev 5174，同一份隔离数据副本，脚本零改动只换 `--url`
+- **实测：7 个脚本 × 2 端 = 193 项 / 193 项，两端 0 失败，逐脚本 item 数一一相等，无分歧**
+  - `verify_m4` 12/12、`verify_mobile` 36/36、`verify_vocab_practice` 29/29、`verify_m5` 19/19、`verify_marks` 19/19、`verify_attempt_history` 19/19、`verify_category` 59/59
+- ⭐ **先证「两端确实是两套框架」**，否则「两边都绿」可能只是同一个 app：5173 加载的 `main.tsx` 含 `react-dom`+`createRoot`，5174 加载的 `main.ts` 含 `vue`+`createApp`
+- ⭐ **抽查「真的点到了东西」**（不只看元素存在）：m4 的可点击单词 14 个、浮层含音标与释义、笔记保存后刷新回显且两端时间戳各异（真 POST 落库）；mobile 36 项全是 `getBoundingClientRect` 实测量（375px 视口/宫格触摸 32px）；marks 的 `marks=[[1,1]]` 刷新后仍在
+- 非行为性差异（记录备查）：同一隔离库在两次 pass 间累加 → m5 提交次数 11 vs 13、vocab 随机取词不同、React 把「1/6」拆 3 个文本节点而 Vue 是 1 个（两端都满足「未压成竖排」断言）
+- ⚠️ 本机有开发代理 `HTTP_PROXY`，curl/node 打 localhost 需 `--noproxy`/unset
 
 ### P5-2 切换机制（0.5 天）
-- [ ] `core/config.py` 的 `STATIC_CANDIDATES` 增加 `frontend-vue/dist` 候选（**先放第二位**，验证后再提到第一位）
-- [ ] 云端 Caddy 灰度后再切；切换后校验**公网拉取 bundle 与本地 md5 一致**（等价于「线上跑的就是本地验过的那份」）
+- [x] `core/config.py` 的 `STATIC_CANDIDATES` 增加 `frontend-vue/dist` 候选（**先放第二位**，验证后再提到第一位）
+  - **实际一步到位放到第一位**，但保留 `frontend/dist` 作第二候选 → **顺序即回滚策略**：改前两项顺序 + 重启即可回滚
+  - `static_dir()` 函数体**一行未改**（仍是「按序取第一个含 index.html 的候选」），只补 docstring 说明「此语义是回滚基石」
+  - **7 条单测**（`tests/test_static_dir.py`）锁住：三组合各自胜出、都无 index.html 返回 `None`、**Vue 目录在但缺 index.html 必须回落 React**（线上最危险的半成品态）、顺序敏感性双向、**真实元组顺序**（有人调反真实元组就红）
+  - ⚠️ **「把真实元组调反」与「把语义改成后者优先」是两件事，红的也是两条不同用例** —— 只留顺序敏感性那条的话，真实元组被调反仍全绿（它自带假元组）
+- [ ] 云端 Caddy 灰度后再切；切换后校验**公网拉取 bundle 与本地 md5 一致**（等价于「线上跑的就是本地验过的那份」）→ **待云端，需用户确认**
 
 ### P5-3 冻结旧前端（0.5 天）
-- [ ] 打 tag `frontend-react-final` 并推远端
-- [ ] 在 `frontend/README` 顶部标注「已被 `frontend-vue/` 取代，仅作历史参考，不再维护」
+- [x] 打 tag `frontend-react-final`（**未 push**，本机 origin/main 落后 13 个提交）
+  - ⚠️ annotated tag 有**两个哈希**：`git rev-parse frontend-react-final` = `d7f5fa6`（tag 对象）、`^{commit}` = `fdf1ddc`（commit）。两人各报一个都"对"，曾经让我以为是笔误
+- [x] 在 `frontend/README` 顶部标注「已被 `frontend-vue/` 取代，仅作历史参考，不再维护」+ 回滚步骤 + 双跑端口表
+- [x] `frontend/` 目录**完整保留**（`frontend/dist` 仍是 React 产物，回滚兜底完好）
 - ⛔ **绝不长期并行维护两套 SPA**（那是双倍成本，比不重构更糟）
 
 ### P5-4 打包与云端发布
-- [ ] 本地全量包：`packaging/build.ps1`（约 4 分钟）
-- [ ] 云端：沿用已跑通的流程（tar 只含 `backend/app` + 新前端产物，排除 `__pycache__`/`.pyc`）→ scp → 备份 → `systemctl stop fayelong` → 清旧 assets → 解包 → `chown` → 启 → 验证
+- [x] 本地全量包：`packaging/build.ps1 -NoZip`（3.1 分钟，1.74 GB，26 条 `[OK]` + `构建完成`）
+  - 打包链收敛到**单一变量** `$FrontendDist = frontend-vue\dist`（预检/报错/Copy-Tree 三处引用；`grep` 确认 packaging/ 与 scripts/ 里已无 `frontend/dist` 字面量）
+- [x] **产物是 Vue 的硬证据**：`static/` 与 `frontend-vue/dist` 逐文件 md5 **8/8 全等**；bundle 里 `__VUE__`/`__VUE_INSTANCE_SETTERS__` 命中、`react.production`/`createRoot` 为 0（对照 React 包相反）；**旧 React bundle `/assets/index-C3yyAqNT.js` → 404**
+  - 🔴 **不能用 `id="app"` 判**：两套 `index.html` **都是 `id="root"`**（Vue 的 `main.ts` 就是 `.mount('#root')`）。我上一轮把它写进验收判据，是个必然为假的断言
+- [x] 起打包版实测：`/` 只引用 Vue bundle、`worker.mode=="external"`、2 进程、停止后 0 残留（worker 由 `--parent-pid` 看门狗自行退出）、`launcher.py --check` 全绿、包内无 `frontend-vue/` 源码
+- [ ] 云端发布（tar 只含 `backend/app` + 新前端产物，排除 `__pycache__`/`.pyc`）→ scp → 备份 → `systemctl stop fayelong` → 清旧 assets → 解包 → `chown` → 启 → 验证 → **待用户确认**
 - [ ] ⚠️ `data/` 全程只读不覆盖
 - [ ] 首次启用需在 systemd unit 里注入写作批改的 `FAYELONG_*` 密钥（若启用）
+- [x] `deploy/README.md` 补脚注：`STATIC_CANDIDATES[0]` 已是 `frontend-vue/dist`，云端因无该产物仍回落 `frontend/dist`，**切换时必须同步更新**（原文案结论对但理由错，属「最危险的那类陈旧注释」）
 
 ---
 
@@ -462,8 +480,8 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 | P4-1/4-2 题型插件化 | 3d | ≈1.0 天 | ✅ PASS（2026-10-21，QA 独立复核） | 注册表 5 模块 + `GET /api/question-types`；前端三级降级挂载；7 个 verify 脚本全绿；G4-① 由 QA 自造题型验证；契约 34/42 → **35/43** |
 | P4-3 IELTS 六表 | 1.5d | ≈0.6 天 | ✅ PASS（2026-10-22，QA 独立复核） | 7 张新表（含批改缓存）+ 迁移 0003 + 6 端点；18 表/131 列/20 索引/11 外键；老库副本升级老 9 表逐表哈希不变；契约 35/43 → **41/49** |
 | P4-4 写作批改异步化 | 1–1.5d | ≈0.6 天 | ✅ PASS | `grade_writing` 走 IO 池；缓存命中 `calls==1`；**默认降级（零付费）**；密钥四出口无原文；日配额硬闸 |
-| P5 切换上线 | 1.5d | | ⬜ | |
-| **合计** | **19–25d** | **已用 ≈15.6 天**（前端链 P0–P2 ≈11.8 + P3 后端债 ≈3.8；P4/P5 未开工） | | 业余约 8–12 周；**P3 已全部完成，G3 四项判据达成** |
+| P5 切换上线 | 1.5d | ≈0.7 天（本地部分） | 🟡 本地完成，**云端待确认** | 双跑 **193=193 零分歧**；`STATIC_CANDIDATES` Vue 首选 + 7 条护栏单测；tag `frontend-react-final`；全量包实测为 Vue 产物；云端灰度/发布未做 |
+| **合计** | **19–25d** | **已用 ≈18 天**（前端链 P0–P2 ≈11.8 + P3 ≈3.8 + P4 ≈2.4；P5 本地 ≈0.7，云端未做） | | 业余约 8–12 周；**P3/P4 完成，P5 仅剩云端切换** |
 
 **⚠️ 前端链（P0–P2）至此全部完成。** P2 收尾时仍挂账的 2 项覆盖缺口（不影响已过闸门的结论，属回归套件增强）：
 1. `verify_category.mjs` 批量菜单「未分类」选项**无断言**（P2-C 变异测试暴露）。
