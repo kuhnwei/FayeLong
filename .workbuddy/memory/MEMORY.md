@@ -14,7 +14,11 @@
 ## 正在执行
 **REFACTOR-PLAN-001**（`docs/REFACTOR-PLAN-001-执行计划.md`，施工文件，按闸门 G0→G5 推进）：
 前端 React→Vue3 全量重写（新建 `frontend-vue/`，**不覆盖 `frontend/`**）+ 后端架构债（Alembic / jobs+worker / CPU-IO 分池 / 测试网 / health 扩展）+ 题型插件化 + IELTS 新表族。**后端不换语言**。
-- 2026-10-22 进度：**前端链 P0–P2 + 后端 P3 + P4 全部完成，G3 四项 + G4 判据均达成**（均经 QA 独立复核）。后端 **369 passed / 1 skipped**、契约 **41/49**（P4 两次合法变更）；`frontend-vue/src` 7,895 行。**下一步：P5 切换上线**（双跑 → 静态目录候选 → 云端灰度 → 硬切换 → 冻结旧 React）。
+- 2026-10-22 进度：**前端链 P0–P2 + 后端 P3 + P4 + P5 本地部分全部完成**（均经 QA 独立复核）。后端 **376 passed / 1 skipped**、契约 **41/49**；`frontend-vue` 已是 `STATIC_CANDIDATES[0]`，旧 React 冻结（tag `frontend-react-final`）。**只剩云端切换**（需用户确认）。
+  - ⭐ **G5-① 双跑 193=193 零分歧**：7 个 verify 脚本 × React(5173)/Vue(5174) 两套前端打同一隔离后端。⚠️ **旧 React 的 vite 代理写死 8000**，隔离后端必须占 8000，否则会打真实库。
+  - ⭐ **静态目录顺序即回滚策略**：`(frontend-vue/dist, frontend/dist, static)`；`static_dir()` 语义「第一个含 index.html 的胜出」不许改。7 条护栏单测里最关键两条：Vue 目录在但缺 index.html 必须回落 React；直接断言真实元组顺序。
+  - 🔴 **判产物来源不能用 `id="app"`** —— 两套 `index.html` **都是 `id="root"`**。正确判据：`static/` 与 `frontend-vue/dist` 逐文件 md5 全等 + bundle 里 `__VUE__` 命中/`react.production` 为 0 + 旧 React bundle 404。
+  - ⚠️ annotated tag 有**两个哈希**：`git rev-parse <tag>` 给 tag 对象，`^{commit}` 给 commit，别当成笔误。
   - 🔴 **版本库**：`frontend-vue/`、`tests/`、`migrations/`、`contracts/` 此前全 untracked（两周无基线），已补 6 个提交。**阶段结束必须 commit。**
   - ⭐ **P4 题型插件**：`services/question_types/` + `GET /api/question-types`（实时读注册表）；前端 `src/question-types/` 三级降级；`<component :is>` 在 `SentenceStage.vue`（不是 StudyPage，上移威胁 `verify_mobile`）。
   - 🔴 **answer 铁律三重力证**：schema 无该字段 + 白名单挑字段 + `SECRET-*` 串断言；`report` **必须按 `submitted_at` 设闸**（领域层 409），`ResponseOut` 已删 `detail` —— 判分明细只经 report。
