@@ -1,45 +1,95 @@
 <script setup lang="ts">
 /**
- * 应用外壳（历史踩坑区，结构照搬旧 `frontend/src/components/Layout.tsx`）。
+ * 应用外壳（P1-2 换皮）：顶栏药丸导航 + 移动端底部 Tab（真实 `<footer>`）。
  *
- * 「固定高度 + 三段 flex」：
- *   header（shrink-0） / main（flex-1 min-h-0 overflow-y-auto） / 底条（shrink-0）
+ * 布局沿用 P0 前「固定高度三段 flex」的哲学（不引入 fixed 定位，也不用 100vh 减高度的魔法数字）：
+ *   header（shrink-0） / main（flex-1 min-h-0 overflow-y-auto） / PlayerBar（shrink-0） / footer（shrink-0）
+ * 移动底栏 Tab 是真正的第三段 `<footer>`，`md` 以下才显示；PlayerBar 作为普通 flex 子项
+ * 排在 `<main>` 与 `<footer>` 之间（flex 堆叠、零 z-index 冲突，见 ARCH §4.2 Q3 裁决）。
  *
- * 为什么：旧版用 `fixed bottom-0` 播放条 + 学习页 `calc(100vh - 109px)` 的魔法数字，
- * 数字按桌面顶栏高度（61px）与 main 内边距（24px）算，手机顶栏一换行变高就全错。
- * 改成固定高度 flex 外壳后，学习页只写 `h-full` 就刚好撑满，**与顶栏/底条实际高度无关**。
- *
- * 用 `h-dvh` 而非 `h-screen`：dvh 取动态视口高度，移动端地址栏收起/展开时不会跳动。
+ * ⚠️ 脚本依赖（改结构前先看）：
+ *   - 根容器必须带 `h-dvh`、直接子元素依次是 `<header>` `<main>` `<footer>`（skeleton 三段式断言）
+ *   - `header nav a` 是导航探针的锚点；每项须带 `data-active="true|false"`（文本定位）
+ *   - `header` 里必须保留 BackendStatus（含「后端」文本）与 AccountMenu（含 `▾` 按钮）
+ *   - 桌面（≥md）导航文本可见（skeleton 在 1280px 按文本定位）；移动端（<sm）收成图标
  */
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AccountMenu from './AccountMenu.vue'
 import BackendStatus from './BackendStatus.vue'
 import PlayerBar from './PlayerBar.vue'
 
 const route = useRoute()
+const router = useRouter()
 
-/** 导航项样式：与旧 `navClass` 逐字一致（手机上收紧内边距与字号，桌面上放宽）。 */
-function navClass(isActive: boolean): string {
+interface NavItem {
+  key: 'library' | 'vocab' | 'practice' | 'stats'
+  /** vue-router 的路由 name（`router.hasRoute` 用 name 判断，不是 path） */
+  name: string
+  to: string
+  label: string
+  /** 手写内联 SVG（2px 圆头描边，currentColor 继承），顶栏图标与底栏 Tab 共用 */
+  icon: string
+}
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    key: 'library',
+    name: 'library',
+    to: '/',
+    label: '媒体库',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 9h16"/><path d="M9 13h6"/></svg>',
+  },
+  {
+    key: 'vocab',
+    name: 'vocab',
+    to: '/vocab',
+    label: '生词本',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M9 8h6"/></svg>',
+  },
+  {
+    key: 'practice',
+    name: 'vocab-practice',
+    to: '/vocab/practice',
+    label: '练习',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"/></svg>',
+  },
+  {
+    key: 'stats',
+    name: 'stats',
+    to: '/stats',
+    label: '统计',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M7 20v-6"/><path d="M12 20V8"/><path d="M17 20v-4"/></svg>',
+  },
+]
+
+/** 精确匹配：`/vocab` 与 `/vocab/practice` 各自独立点亮，绝不因前缀同时亮两个。 */
+function activeKey(): 'library' | 'vocab' | 'practice' | 'stats' | '' {
+  const p = route.path
+  if (p === '/') return 'library'
+  if (p === '/vocab') return 'vocab'
+  if (p === '/vocab/practice') return 'practice'
+  if (p === '/stats' || p.startsWith('/stats/')) return 'stats'
+  return ''
+}
+
+const isActive = (key: NavItem['key']) => activeKey() === key
+/** `/stats` 路由 T06 才建；未注册时渲染占位 span，不让它跳转报错。 */
+const isAvailable = (item: NavItem) => router.hasRoute(item.name)
+
+/** 底栏 Tab 的选中态（`.tab` 语义用工具类拼，active 走 lemon-200 圆角块）。 */
+function tabClass(active: boolean): string {
   return [
-    'shrink-0 rounded-lg px-2 py-1.5 text-[13px] transition-colors sm:px-3 sm:py-2 sm:text-sm',
-    isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+    'flex min-h-[48px] flex-col items-center justify-center gap-[2px] rounded-control px-1',
+    'text-[10.5px] font-semibold transition-colors',
+    active ? 'bg-lemon-200 text-ink' : 'text-ink-3',
   ].join(' ')
-}
-
-/** 「媒体库」只在根路径高亮（对应旧 NavLink 的 `end`）。 */
-function isLibraryActive(): boolean {
-  return route.path === '/'
-}
-
-/** 「生词本」在 /vocab 及其子路径高亮（旧 NavLink 无 `end`，前缀匹配）。 */
-function isVocabActive(): boolean {
-  return route.path === '/vocab' || route.path.startsWith('/vocab/')
 }
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col overflow-hidden bg-slate-50">
-    <header class="shrink-0 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)]">
+  <div class="flex h-dvh flex-col overflow-hidden bg-cream text-ink">
+    <!-- ================= 顶栏 ================= -->
+    <header class="shrink-0 border-b-[2px] border-ink bg-cream pt-[env(safe-area-inset-top)]">
       <div class="mx-auto flex w-full max-w-5xl items-center gap-2 px-3 py-2 sm:gap-4 sm:px-6 sm:py-3">
         <!-- 站点 Logo（柚子龙，透明底紧贴裁剪）：alt 留空 —— 标题里已有名字，避免读屏重复播报 -->
         <img
@@ -48,14 +98,34 @@ function isVocabActive(): boolean {
           draggable="false"
           class="h-6 w-6 shrink-0 select-none sm:h-7 sm:w-7"
         />
-        <h1 class="shrink-0 text-[14px] font-medium text-slate-900 sm:text-[15px]">
+        <h1 class="shrink-0 text-[14px] font-extrabold tracking-[0.2px] sm:text-[15px]">
           <span class="hidden sm:inline">FayeLong 英语学习</span>
           <span class="sm:hidden">FayeLong</span>
         </h1>
-        <nav class="flex min-w-0 items-center gap-0.5 sm:gap-1">
-          <RouterLink to="/" :class="navClass(isLibraryActive())">媒体库</RouterLink>
-          <RouterLink to="/vocab" :class="navClass(isVocabActive())">生词本</RouterLink>
+
+        <nav class="flex min-w-0 items-center gap-0.5 sm:gap-1" aria-label="主导航">
+          <template v-for="item in NAV_ITEMS" :key="item.key">
+            <RouterLink
+              v-if="isAvailable(item)"
+              :to="item.to"
+              class="nav-pill px-2 sm:px-3.5"
+              :data-active="isActive(item.key) ? 'true' : 'false'"
+            >
+              <span class="[&>svg]:block" v-html="item.icon" />
+              <span class="hidden sm:inline">{{ item.label }}</span>
+            </RouterLink>
+            <span
+              v-else
+              class="nav-pill cursor-default px-2 opacity-40 sm:px-3.5"
+              :data-active="'false'"
+              :title="`${item.label}（即将上线）`"
+            >
+              <span class="[&>svg]:block" v-html="item.icon" />
+              <span class="hidden sm:inline">{{ item.label }}</span>
+            </span>
+          </template>
         </nav>
+
         <div class="ml-auto flex shrink-0 items-center gap-2">
           <BackendStatus />
           <AccountMenu />
@@ -63,11 +133,33 @@ function isVocabActive(): boolean {
       </div>
     </header>
 
+    <!-- ================= 主体 ================= -->
     <main class="mx-auto min-h-0 w-full max-w-5xl flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-6">
       <slot />
     </main>
 
-    <!-- 底条：真正的播放条（P2-B）。无 current 时整条不渲染，外壳自然只剩两段 -->
+    <!-- 播放条：普通 flex 子项，位于 main 与 footer 之间（无 current 时不渲染） -->
     <PlayerBar />
+
+    <!-- ================= 移动端底部 Tab（真实 footer） ================= -->
+    <footer class="shrink-0 border-t-[2px] border-ink bg-cream pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav class="grid grid-cols-4 px-2 pt-1.5" aria-label="底部导航">
+        <template v-for="item in NAV_ITEMS" :key="item.key">
+          <RouterLink
+            v-if="isAvailable(item)"
+            :to="item.to"
+            :class="tabClass(isActive(item.key))"
+            :data-active="isActive(item.key) ? 'true' : 'false'"
+          >
+            <span class="[&>svg]:block" v-html="item.icon" />
+            <span>{{ item.label }}</span>
+          </RouterLink>
+          <span v-else :class="[tabClass(false), 'cursor-default opacity-40']" :data-active="'false'">
+            <span class="[&>svg]:block" v-html="item.icon" />
+            <span>{{ item.label }}</span>
+          </span>
+        </template>
+      </nav>
+    </footer>
   </div>
 </template>

@@ -98,7 +98,7 @@ const iconBtn = 'shrink-0 rounded-lg p-2 transition-colors'
   <div
     v-if="current"
     data-testid="player-bar"
-    class="shrink-0 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
+    class="shrink-0 border-t-[2px] border-ink bg-cream"
   >
     <audio
       ref="audioEl"
