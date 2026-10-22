@@ -72,24 +72,24 @@ function cancel() {
 </script>
 
 <template>
-  <div data-vocab-row class="rounded-xl border border-slate-200 bg-white px-4 py-3">
+  <div data-vocab-row class="rounded-xl border border-ink bg-white px-4 py-3">
     <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
       <!-- 单词 -->
       <div class="min-w-[150px] shrink-0">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span class="text-[15px] font-medium text-slate-900">{{ display }}</span>
+          <span class="text-[15px] font-medium text-ink">{{ display }}</span>
           <button
             type="button"
             :title="`朗读 ${display}`"
             :aria-label="`朗读 ${display}`"
-            class="rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            class="rounded p-0.5 text-ink-3 transition-colors hover:bg-lemon-100 hover:text-ink"
             @click="speakEnglish(display)"
           >
             <SpeakerIcon class-name="h-3.5 w-3.5" />
           </button>
-          <span v-if="item.phonetic" class="text-[11px] text-slate-400">/{{ item.phonetic }}/</span>
+          <span v-if="item.phonetic" class="text-[11px] text-ink-3">/{{ item.phonetic }}/</span>
         </div>
-        <p v-if="item.lemma && item.lemma !== item.word" class="mt-0.5 text-[10px] text-slate-400">
+        <p v-if="item.lemma && item.lemma !== item.word" class="mt-0.5 text-[10px] text-ink-3">
           原文 {{ item.word }}
         </p>
       </div>
@@ -101,19 +101,19 @@ function cancel() {
           ref="textareaRef"
           v-model="draft"
           rows="2"
-          class="w-full resize-y rounded-lg border border-slate-300 px-2.5 py-1.5 text-[13px] leading-relaxed text-slate-700 outline-none focus:border-slate-500"
+          class="w-full resize-y rounded-lg border border-ink-3 px-2.5 py-1.5 text-[13px] leading-relaxed text-ink outline-none focus:border-ink"
         />
-        <p v-else class="text-[13px] leading-relaxed text-slate-700">
+        <p v-else class="text-[13px] leading-relaxed text-ink">
           <template v-if="item.translation">{{ item.translation }}</template>
-          <span v-else class="text-slate-400">（暂无释义）</span>
+          <span v-else class="text-ink-3">（暂无释义）</span>
         </p>
-        <p v-if="item.context" class="mt-1 text-[11px] leading-relaxed text-slate-400">
+        <p v-if="item.context" class="mt-1 text-[11px] leading-relaxed text-ink-3">
           上下文：{{ item.context }}
         </p>
       </div>
 
       <!-- 来源 -->
-      <div class="shrink-0 text-right text-[11px] text-slate-400">
+      <div class="shrink-0 text-right text-[11px] text-ink-3">
         <span
           v-if="item.media_title"
           :title="item.media_title"
@@ -121,7 +121,7 @@ function cancel() {
         >
           {{ item.media_title }}
         </span>
-        <span v-else class="text-slate-300">—</span>
+        <span v-else class="text-ink-3">—</span>
       </div>
 
       <!-- 操作 -->
@@ -130,7 +130,7 @@ function cancel() {
           <button
             type="button"
             :disabled="busy"
-            class="flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[12px] text-white transition-colors hover:bg-slate-700 disabled:opacity-40"
+            class="flex items-center gap-1 rounded-lg bg-lemon-400 px-2.5 py-1.5 text-[12px] text-ink transition-colors hover:bg-lemon-300 disabled:opacity-40"
             @click="save"
           >
             <CheckIcon class-name="h-3.5 w-3.5" />
@@ -139,7 +139,7 @@ function cancel() {
           <button
             type="button"
             title="取消"
-            class="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition-colors hover:bg-slate-50"
+            class="rounded-lg border border-ink p-1.5 text-ink-2 transition-colors hover:bg-lemon-100"
             @click="cancel"
           >
             <CloseIcon class-name="h-3.5 w-3.5" />
@@ -154,7 +154,7 @@ function cancel() {
               'flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors disabled:opacity-40',
               item.mastered
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
-                : 'border-slate-200 text-slate-500 hover:bg-slate-50',
+                : 'border-ink text-ink-2 hover:bg-lemon-100',
             ]"
             @click="emit('toggle-mastered')"
           >
@@ -165,7 +165,7 @@ function cancel() {
           <button
             type="button"
             title="编辑释义"
-            class="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition-colors hover:bg-slate-50"
+            class="rounded-lg border border-ink p-1.5 text-ink-2 transition-colors hover:bg-lemon-100"
             @click="startEdit"
           >
             <PencilIcon class-name="h-3.5 w-3.5" />
@@ -174,7 +174,7 @@ function cancel() {
             type="button"
             :disabled="busy"
             title="删除"
-            class="rounded-lg border border-slate-200 p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+            class="rounded-lg border border-ink p-1.5 text-ink-3 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
             @click="emit('delete')"
           >
             <TrashIcon class-name="h-3.5 w-3.5" />
