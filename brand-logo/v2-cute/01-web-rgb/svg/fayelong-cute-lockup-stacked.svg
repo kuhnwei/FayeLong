@@ -1,0 +1,6 @@
+<!-- FayeLong 组合标志（v2 · L · 柚子）
+     图形本体为纯矢量路径（零字体依赖）；字标本轮为字体排版占位，
+     依赖字体栈：Inter Tight → Inter → Segoe UI Variable → system-ui；
+     中文：思源黑体 SC → 苹方 → 微软雅黑。定稿轮将自绘轮廓并轮廓化。
+     几何真源：06-source/geom.py -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1530"><g transform="translate(285,0)"><path d="M 662.209 677.701 A 121.135 121.135 0 0 1 559.165 510.974 A 121.135 121.135 0 0 1 662.209 677.701 Z" fill="#F2759F"/><path d="M 617.29 563.748 A 158.5 137.265 0 1 0 725.71 563.748 A 75 75 0 0 1 617.29 563.748 Z" fill="#EDC62A"/><path d="M 0 98 A 98 98 0 0 1 196 98 L 196 559 A 75 75 0 0 0 271 634 L 340 634 A 98 98 0 0 1 340 830 L 98 830 A 98 98 0 0 1 0 732 L 0 98 Z" fill="#F2759F"/></g><text x="700.0" y="1197.571" font-family="'Inter Tight', Inter, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif" font-size="329.4" font-weight="650" letter-spacing="-5" fill="#F2759F" text-anchor="middle">FayeLong</text><text x="700.0" y="1434.714" font-family="'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="99.6" font-weight="500" letter-spacing="35.6" fill="#F2759F" text-anchor="middle" opacity="0.70">英语精听 · 听写</text></svg>

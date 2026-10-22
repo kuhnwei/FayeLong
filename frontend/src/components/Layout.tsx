@@ -196,6 +196,13 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
       <header className="shrink-0 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-3 py-2 sm:gap-4 sm:px-6 sm:py-3">
+          {/* 站点 Logo（柚子龙，透明底紧贴裁剪）：alt 留空 —— 标题里已有名字，避免读屏重复播报 */}
+          <img
+            src="/logo.png"
+            alt=""
+            draggable={false}
+            className="h-6 w-6 shrink-0 select-none sm:h-7 sm:w-7"
+          />
           <h1 className="shrink-0 text-[14px] font-medium text-slate-900 sm:text-[15px]">
             <span className="hidden sm:inline">FayeLong 英语学习</span>
             <span className="sm:hidden">FayeLong</span>

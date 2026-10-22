@@ -1,0 +1,6 @@
+<!-- FayeLong 组合标志（横排/堆叠）
+     图形本体为纯矢量路径（零字体依赖）；字标本轮为**字体排版占位**，
+     依赖字体栈：Inter Tight → Inter → Segoe UI Variable → system-ui；
+     中文：思源黑体 SC → 苹方 → 微软雅黑。定稿轮将自绘轮廓并轮廓化。
+     几何真源：06-source/build_logo.py -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1258"><g transform="translate(443,0)"><path d="M0 0 H196 V636 H318 V832 H0 Z" fill="#0E3B34"/><path d="M456.71 757 H496.29 A17.71 17.71 0 0 1 514 774.71 V814.29 A17.71 17.71 0 0 1 496.29 832 H456.71 A17.71 17.71 0 0 1 439 814.29 V774.71 A17.71 17.71 0 0 1 456.71 757 Z" fill="#D98A3D"/></g><text x="700.0" y="1059.629" font-family="'Inter Tight', Inter, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif" font-size="204.0" font-weight="650" letter-spacing="-5" fill="#0E3B34" text-anchor="middle">FayeLong</text><text x="700.0" y="1206.486" font-family="'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="61.7" font-weight="500" letter-spacing="22.0" fill="#0E3B34" text-anchor="middle" opacity="0.70">英语精听 · 听写</text></svg>
