@@ -15,6 +15,7 @@
 6. **破坏性验证一律在副本/沙箱里做**，绝不在交付物上「改→还原」（P3-1 教训：变异备份放在 `migrations/versions/` 里，被 alembic 当成第二个 `0001` 迁移加载；且与另一方的写入互相覆盖）。做法：`cp -r backend/ → 临时根`，在沙箱里变异。
 7. **验证进行中不得给实现者下发新批次**（P3-2 教训：终验已开始后才把「最后 4 项」发给工程师，导致 3 个文件在验证窗口内被改，QA 只能作废重测、白跑一轮）。纪律是「**一批实现 → 冻结 → 验证 → 结论**」闭环；发现还要补，就**等本轮结论出来再开下一批**，不要在验证中途插入。
 8. **不要用「重跑导出脚本」来校验契约基线**（P3-2 教训：`export_openapi.py` 的产物**就是** `check-contract.mjs` 的基线文件，重跑一次等于把「校验」变成「自比」）。确需重导出时，先把基线 `cp` 到临时路径再 diff。**校验契约的正确做法**：live `app.openapi()` 与基线逐 operation 比对（注意在副本里跑会因找不到 `frontend/dist` 多注册一个 `/`，得到 35/43 —— 要用真实 `backend/` 只重定向 DB）。
+9. **每个阶段结束必须把成果提交进 git**（P4-A 教训：`frontend-vue/` 7,895 行、`backend/tests/` 324 条用例、`migrations/`、`contracts/` 竟然**全部 untracked**，P1–P3 干了两周没有任何版本基线）。后果很实在：QA 想验「组件搬家零漂移」时，`git show HEAD:旧组件` 拿不到，只能改用「以 verify 脚本的选择器为基准」的间接反证。**没有提交的代码等于没有历史**，重构期尤其致命。
 
 ---
 
@@ -333,29 +334,53 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 ## 7. P4 —— 题型插件化与 IELTS 数据模型（4–6 天）
 
 ### P4-1 题型契约与注册表（2 天）
-- [ ] 产出：`backend/app/services/question_types/`（`base.py` + `registry.py` + `dictation.py` 包装器）
+- [x] 产出：`backend/app/services/question_types/`（`base.py` / `registry.py` / `dictation.py` / `echo.py` / `__init__.py`）+ `schemas/question_type.py` + `api/question_types.py`
 - 契约见 `ADR-001 §5.5.1` + **§7.1 的异步修订**（`grade_mode: sync|async`、`grade_async()`）
 - 关键：**现有 `services/dictation.py` 的纯函数原样包装成 `dictation` 题型，逻辑零改动** —— 这是「听写降级为一种题型」的落地动作
-- [ ] `GET /api/question-types` 下发注册表（code / grade_mode / 是否需要外部服务），**防前后端题型清单漂移**
-- 验收：现有听写功能无任何行为变化（P0-5 的 `test_dictation.py` 必须全绿）
+  - **实测**：`services/dictation.py` 与 HEAD **逐字节相同**（QA 用 `git show` 比对 sha256）；`grade()` 内部就是 `detail = evaluate(...)`，`score/max_score` 取 detail 里的词级计数。QA 另造 7 组句子（大小写 / `Mr.` 缩写 / 多余空格 / 完全错 / `don't` / 漏词 / 标点）断言 `detail` 与直接调 `evaluate()` **逐字段相等**
+  - ⚠️ `normalize()` **只 strip**，大小写/标点仍由 `settings.dictation_ignore_*` 在纯函数里决定 —— 包装层再处理一遍 = 同一作答两种分数，是最难查的 bug
+- [x] `GET /api/question-types` 下发注册表（code / grade_mode / 是否需要外部服务），**防前后端题型清单漂移**
+  - 每次请求**实时读注册表**（不缓存）⇒ 新增题型不改端点；需登录（未登录 401）
+  - 注册表：重复 code **报错**（不静默覆盖）、空表不崩、`all_types()` 按 code 升序稳定
+- 验收：现有听写功能无任何行为变化（P0-5 的 `test_dictation.py` 必须全绿）→ **通过**；本批 +45 条用例，全量 **323 passed / 1 skipped**
+- 工时：2 天 → **实际 ≈0.5 天**
 
 ### P4-2 前端题型动态挂载（1 天）
-- [ ] 产出：`frontend-vue/src/question-types/`，每个题型 = 一个作答组件 + 一个结果渲染组件，按 `code` 动态挂载（`<component :is>`）
+- [x] 产出：`frontend-vue/src/question-types/`，每个题型 = 一个作答组件 + 一个结果渲染组件，按 `code` 动态挂载（`<component :is>`）
 - 验收（G4-①）：新增一个占位题型只需加模块 + 组件，不改核心
+- **实际做法**：
+  - `dictation/Answer.vue` + `Result.vue` 由 `components/DictationBox.vue` / `DiffResult.vue` **搬家**（原文件已删，仓库无第二份实现）
+  - `index.ts` 提供 `registerQuestionType / resolve / hasQuestionType`，`FALLBACK_CODE='dictation'`
+  - **三级降级**：① `GET /api/question-types` 失败或无该 code → 用 fallback；② `resolve()` 找不到组件 → 降级 dictation 并 warn；③ 连兜底都没注册 → 抛可读错误（结构性护栏）
+  - ⚠️ **`<component :is>` 落在 `SentenceStage.vue` 而非 `StudyPage.vue`**：听写框原本就在 `SentenceStage` 的卡片内部，上移会改 DOM 层级、直接威胁 `verify_mobile` 的「无纵向滚动条 / 32px 触摸目标」。决定权仍在 `StudyPage`（按 code 解析并下发组件），`SentenceStage` 对具体题型无感知
+- 验收（实测）：`verify_m4` **12/12**、`verify_mobile` **36/36**、`verify_vocab_practice` **29/29**；加分回归 `verify_m5` **19/19**、`verify_marks` **19/19**、`verify_attempt_history` **19/19**、`verify_category` **59/59**（这些脚本全靠 `dictation-input` 等 `data-testid` 定位，等于反向证明 DOM 零漂移）
+- **G4-① 成立**：QA 在沙箱**自造**一次性题型（只加 `myprobe.py` + 前端两组件），后端端点立刻下发、前端加一行注册即挂载，`base/registry/api/StudyPage/SentenceStage` **逐字节不变**；仓库里 `echo` 占位题型**默认不注册**（端点只返回 `dictation`）
+- ⚠️ **QA 纠正的 4 处任务书前提错误**（记录备查）：① `frontend-vue/` 此前从未进 git，`git show HEAD:...` 当时不可用（现已入库，可比了）；② `claim()` 并**不**隐式排除 `GRADE_KINDS`，它只用 `kinds/exclude_kinds`；③ `verify_unclassified.mjs` 不存在；④ 契约 diff 报的是「1 path + 2 schema」而非「paths/ops/op 三条」
+- 工时：1 天 → **实际 ≈0.5 天**
 
 ### P4-3 IELTS 数据模型（1.5 天）
-- [ ] 产出：6 张新表（见 `ADR-001 §5.5.2`）：`papers / sections / passages / questions / practice_sessions / responses`
+- [x] 产出：6 张新表（见 `ADR-001 §5.5.2`）：`papers / sections / passages / questions / practice_sessions / responses` + **`writing_grade_cache`**（P4-4 的批改缓存）
 - 强制约定：
   - ✅ `answer` / `detail` 用 **JSON 列**（不同题型答案形状差异大，硬拆列会不断 `ALTER TABLE`）
   - ✅ **不改 `media/sentences/attempts`**（Q4 锁定）
   - ✅ 听力 section 复用现有音频：`questions.type='dictation'` + `ref_sentence_id`
   - ⚠️ `media.status` 状态机（素材处理）与考试会话状态（作答流程）是**两条独立的轴**，不要合并
-- 全部通过 **Alembic 迁移**（P3-1 的成果）
-- [ ] 新增端点：`/api/papers`、`/api/papers/{id}`、`/api/papers/{id}/sessions`、`/api/sessions/{id}/responses`、`/api/sessions/{id}/submit`、`/api/sessions/{id}/report`
-- 验收：提交后 `check-contract.mjs` 提示契约变更 → 显式确认并更新基线
+- 全部通过 **Alembic 迁移**（P3-1 的成果）→ **`0003_ielts.py`（259 行）**，`down_revision="0002"`，只 `CREATE TABLE/INDEX`、不 `ALTER` 老表；幂等（反射已存在则跳过，兼容打包版先 `create_all` 再 upgrade）
+- [x] 新增端点：`GET /api/papers`、`GET /api/papers/{id}`、`POST /api/papers/{id}/sessions`、`PATCH /api/sessions/{id}/responses`、`POST /api/sessions/{id}/submit`、`GET /api/sessions/{id}/report`
+- 验收：提交后 `check-contract.mjs` 提示契约变更 → 显式确认并更新基线 → **41 path / 49 operation**（18 条差异，**全部是新增**：6 path + 12 schema，零缺失/零值不同）
+- **实测要点**：
+  - 全新库：**18 表 / 131 列 / 20 索引 / 11 外键**；`alembic check` rc=0 无待生成迁移
+  - 老库副本 `upgrade head`：**老 9 表逐表行哈希逐个完全相同**（不能只看 TOTAL —— 多了 9 张表 TOTAL 必然变）
+  - **`downgrade base` 会连老 9 表一起删**（0001 就是建它们的迁移）→ 验证「只回退本批」的正确口径是 **`downgrade 0002`**，实测老 9 表哈希逐个不变
+  - `sections.media_id` / `questions.ref_sentence_id` **刻意不加外键**（同 `jobs.ref_id`：加 FK 后删素材只剩「级联删试卷结构」或「SET NULL 留空指针」两条路，清理策略应由应用层决定）；内部父子 7 条 FK 全 CASCADE
+  - `mode/kind/status` **刻意不建 CHECK**（取值集会随题型演进，SQLite 改 CHECK 要重建表）→ 由 pydantic `Literal` 收口
+- **`answer` 不下发**（铁律）三重力证：`QuestionOut` 结构里没有该字段、`_question_public()` 只挑 8 个白名单字段、种子里放 `SECRET-*` 串断言整个响应体不出现；`GET /api/sessions/{id}/report` 里 `explanation` 必须出现（反向对照，证明「看不到」不是因为它根本没下发）
+- 🔴 **QA 抓到的缺陷（MEDIUM，已修）**：`report()` **未按 `submitted_at` 设闸** → 未交卷即可读到 `explanation`。修法：闸放在**领域层**（`services/papers.py`，409「尚未交卷」），API 层只做异常映射 —— 放 API 层的话，将来「导出/SSE/批处理」都会绕过。**顺带把 `ResponseOut.detail` 整个删掉**（它含听写的 `expected` 与写作的 `reference_answer`）→ 判分明细只经 report 下发，比「序列化时记得删」可靠
+- **`grading` 会话允许读 report**（200、`pending>0`、写作题分数 NULL、`detail=={}`）：已交卷，前端要能轮询进度；若这里也 409，前端分不清「还没交」与「还在判」
+- 工时：1.5 天 → **实际 ≈0.6 天**
 
 ### P4-4 写作批改异步化（1–1.5 天，Q6 强制约束）
-- [ ] `kind='grade_writing'` 的 job，走 **IO 池**
+- [x] `kind='grade_writing'` 的 job，走 **IO 池**
 - 四条硬约束（见 `ADR-001 §7.1`）：
   1. 交卷请求只**入队**并返回 `status='grading'`，前端轮询/SSE 取结果（**绝不同步阻塞**）
   2. 结果**按 `(question_id, normalized_response)` 缓存**（参照 `translations` 表的 sha1 key 模式），避免重复付费
@@ -364,6 +389,18 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 - 成本闸：按会话计数调用次数/token，超阈值拒绝并提示
 - 验收（G4-②）：**断网实测**交卷仍可用，写作题降级为参考范文
 - ⚠️ **开工前需再确认一次**：外部 AI 批改是本项目**唯一付费点**，与「零付费依赖」的既有定位冲突。若不愿付费，此任务改为「只给参考范文 + 评分标准」。
+- **实际做法（上述冲突的解法：默认降级，付费可选）**：
+  - **默认 `FAYELONG_GRADING_PROVIDER=off`** ⇒ 零付费、离线可用，直接产出参考范文 + 评分标准 + 自评清单（`status='degraded'`，**是成功态不是失败**，job 状态 `done` 而非 `failed`）。想真批改时配 `FAYELONG_GRADING_{PROVIDER=openai_compat,BASE_URL,API_KEY,MODEL,DAILY_MAX}` 即可，**不改代码**
+  - 默认 off 正好满足 ADR 的强制约束 3 —— 降级路径本来就不是可选项
+  - 外部调用用**标准库 `urllib.request`**（`httpx` 只在 dev 依赖里，`requirements.txt` 没有）→ **零新增依赖**
+  - 缓存 key = `sha1(question_id + "\x00" + JSON(归一化作答, sort_keys))`；**降级结果不入缓存**（否则「临时关掉 provider」会被固化成永久结论）；命中路径纯读、不写
+  - **密钥三处出口全堵**：只从 `Settings` 读、唯一去处是 HTTP 头；`mask_secret()` 打码 + `scrub()` 清洗异常消息；用例断言「异常消息 / 日志 / 缓存 payload / settings 全表」四处都无原文
+  - **成本闸**落 `settings` KV（`grading.usage.<UTC 日期>`）；「网络失败也计 1 次」是保守口径，否则持续失败的 provider 会让日上限形同虚设；⚠️ 读-改-写非原子，IO 池并发时可能**偶尔少计**（绝不多计），个人自用可接受，多用户必须重做
+  - ⚠️ **`ungraded` 与 `degraded` 分开**：前者是「题目数据/题型有问题，判不了」，后者是「判了但走降级包」。**`pending` 只数「还会被 worker 判出来」的题**，`ungraded` 不算 —— 否则前端会为一道永远判不出的题永久轮询
+  - **交卷幂等**：`submitted_at` 非空即不重判、不重复入队，只调 `_ensure_grade_jobs()` 补入队（`uq_jobs_active` 保证不重复）→ 「commit 成功、入队前崩溃」的 `grading` 会话，用户再点一次交卷自愈
+- 验收（实测）：池归属三层证据（常量 / runner 口径 / **行为**：只启 CPU 池跑完 job 仍 pending、只启 IO 池才 done）；缓存命中 `provider.calls==1`；四种降级情形（`provider_off` / `network_error` / `daily_limit` / 题目缺陷）；密钥四出口无原文；`grading_daily_max=1` 时第二次直接降级且 provider 未被调用
+- ⚠️ **未做真机断网演练**：用「provider 指向 `127.0.0.1:1`（已关闭端口，立刻 ECONNREFUSED）」等价模拟，不依赖环境；真断网演练可放到 P5 或终验
+- 工时：1–1.5 天 → **实际 ≈0.6 天**
 
 **⚡ G4 闸门通过后方可进入 P5。**
 
@@ -422,7 +459,9 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 | P3-4 领域收口 | 1d | ≈0.4 天 | ✅ PASS（2026-10-20，QA 独立复核） | `api/media.py` 682→420；新增 `media_ops.py`(802)；契约 34/42；前端套件 `verify_category` 59 项 + `verify_m5` 19 项全过 |
 | P3-5 可观测性 | 0.5d | ≈0.3 天 | ✅ PASS | health 加 `disk` 块；job_id 贯穿（contextvars + handler Filter）；无 job_id 时日志格式逐字不变 |
 | P3-6 打包链 G3-④ | 0.5d | ≈0.9 天 | ✅ G3-④ PASS | 9/9 `[OK]`；双进程 `mode=external`；停后 0 残留；🔴 修掉 2 个「开发绿/打包崩」缺陷（embeddable `_pth` 致 `-m app.worker` 失效、首启并发 `create_all` 撞车） |
-| P4 题型插件化 | 4–6d | | ⬜ | |
+| P4-1/4-2 题型插件化 | 3d | ≈1.0 天 | ✅ PASS（2026-10-21，QA 独立复核） | 注册表 5 模块 + `GET /api/question-types`；前端三级降级挂载；7 个 verify 脚本全绿；G4-① 由 QA 自造题型验证；契约 34/42 → **35/43** |
+| P4-3 IELTS 六表 | 1.5d | ≈0.6 天 | ✅ PASS（2026-10-22，QA 独立复核） | 7 张新表（含批改缓存）+ 迁移 0003 + 6 端点；18 表/131 列/20 索引/11 外键；老库副本升级老 9 表逐表哈希不变；契约 35/43 → **41/49** |
+| P4-4 写作批改异步化 | 1–1.5d | ≈0.6 天 | ✅ PASS | `grade_writing` 走 IO 池；缓存命中 `calls==1`；**默认降级（零付费）**；密钥四出口无原文；日配额硬闸 |
 | P5 切换上线 | 1.5d | | ⬜ | |
 | **合计** | **19–25d** | **已用 ≈15.6 天**（前端链 P0–P2 ≈11.8 + P3 后端债 ≈3.8；P4/P5 未开工） | | 业余约 8–12 周；**P3 已全部完成，G3 四项判据达成** |
 
