@@ -217,7 +217,13 @@ const waitFor = async (fn, timeout = 12000) => {
 const byText = (root, text) =>
   [...root.querySelectorAll('button, a')].find((el) => el.textContent.trim().includes(text)) || null;
 const findRowByTitle = (title) => {
-  // 语义锚点优先 data-media-title，兜底旧字重类名 font-medium（换皮后标题字重会变）
+  // 语义锚点优先 data-media-row（P1 二次打磨 D2：卡片布局把勾选框放在封面区、
+  // 学习链接放在内容区，旧「向上找含 study 链接的祖先」会先命中内容区、漏掉勾选框）
+  const anchored = [...document.querySelectorAll('[data-media-row]')].find((r) =>
+    (r.textContent || '').includes(title),
+  );
+  if (anchored) return anchored;
+  // 兜底：旧行结构（从标题 span 向上找含 study 链接的祖先）
   const span = [...document.querySelectorAll('span')].find(
     (s) =>
       s.textContent.trim() === title &&

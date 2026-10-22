@@ -324,17 +324,31 @@ function exitBatchMode() {
 
 <template>
   <div class="space-y-5">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h2 class="text-[15px] font-medium text-ink">媒体库</h2>
-        <p class="mt-1 text-[13px] text-ink-2">
-          导入英语音频（视频仅取音轨），系统自动转码为标准音频，后续将自动识别原文并翻译。
+    <!-- Hero（D2 二次打磨）：品牌情绪区 + 主操作 -->
+    <div
+      class="relative overflow-hidden rounded-[22px] border-2 border-ink bg-lemon-100 px-5 py-5 sm:px-7 sm:py-6"
+    >
+      <span
+        class="pointer-events-none absolute -right-5 -top-4 hidden h-[128px] w-[128px] bg-[url('/logo.png')] bg-contain bg-center bg-no-repeat sm:block"
+        aria-hidden="true"
+      />
+      <div class="relative min-w-0">
+        <span
+          class="mb-3 inline-flex items-center gap-1.5 rounded-full border-2 border-ink bg-leaf px-3 py-1 text-[11.5px] font-bold text-ink"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2C7 8 5 11 5 15a7 7 0 0014 0c0-3-1.6-5.6-3-7"/><path d="M12 21v-6"/></svg>
+          {{ statsData ? `${statsData.media.done} 个素材已就绪` : '本地素材库' }}
+        </span>
+        <h2 class="text-[26px] font-extrabold leading-[1.25] tracking-[0.3px] text-ink sm:text-[30px]">
+          媒体库
+        </h2>
+        <p class="mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-ink-2">
+          导入英语音频（视频仅取音轨），自动转码 → 识别 → 翻译 → 切片，一句一句地练。
         </p>
-      </div>
-      <div class="flex shrink-0 items-center gap-2">
+        <div class="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg border border-ink bg-white px-3 py-2 text-[13px] text-ink-2 transition-colors hover:bg-lemon-100"
+          class="flex items-center gap-1.5 rounded-full border-2 border-ink bg-white px-4 py-2.5 text-[13px] font-bold text-ink transition-transform hover:-translate-y-px hover:shadow-[0_3px_0_var(--ink)] active:translate-y-[2px] active:shadow-none"
           @click="inboxOpen = !inboxOpen"
         >
           <FolderIcon class-name="h-4 w-4" />
@@ -342,7 +356,7 @@ function exitBatchMode() {
         </button>
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg bg-lemon-400 px-3.5 py-2 text-[13px] text-ink transition-colors hover:bg-lemon-300"
+          class="flex items-center gap-1.5 rounded-full border-2 border-ink bg-lemon-400 px-4 py-2.5 text-[13px] font-bold text-ink shadow-[0_3px_0_var(--ink)] transition-transform hover:-translate-y-px hover:bg-lemon-300 hover:shadow-[0_4px_0_var(--ink)] active:translate-y-[3px] active:shadow-none"
           @click="fileInputRef?.click()"
         >
           <UploadIcon class-name="h-4 w-4" />
@@ -356,6 +370,7 @@ function exitBatchMode() {
           class="hidden"
           @change="onFileInput"
         />
+        </div>
       </div>
     </div>
 
@@ -560,9 +575,9 @@ function exitBatchMode() {
       </div>
     </div>
 
-    <!-- 列表 -->
-    <div class="rounded-xl border border-ink bg-white">
-      <div class="border-b border-cream-2 px-3 py-3 sm:px-5">
+    <!-- 列表（D2：外层去卡片边框，改为卡片网格） -->
+    <div>
+      <div class="mb-3">
         <div class="flex flex-wrap items-center gap-2 sm:gap-3">
           <h3 class="text-sm font-medium text-ink">
             已导入素材
@@ -638,7 +653,7 @@ function exitBatchMode() {
       <!-- 批量操作条 -->
       <div
         v-if="batchMode"
-        class="flex flex-wrap items-center gap-2 border-b border-cream-2 bg-cream px-3 py-2 sm:px-5"
+        class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border-2 border-ink bg-lemon-100 px-3 py-2 sm:px-4"
       >
         <span class="text-[12px] text-ink-2">
           已选 <span class="tabular-nums">{{ batchIds.length }}</span> 项
@@ -739,8 +754,11 @@ function exitBatchMode() {
         没有匹配「{{ keyword }}」的素材。
       </p>
 
-      <div v-for="media in visible" :key="media.id" class="border-b border-cream-2 last:border-0">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <MediaRow
+          v-for="media in visible"
+          :key="media.id"
+          variant="card"
           :media="media"
           :category-name="categoryNameFor(media)"
           :selectable="batchMode"
