@@ -78,6 +78,14 @@ const practisable = computed(
   () => items.value.filter((item) => (item.translation ?? '').trim()).length,
 )
 
+/** D3 统计四卡：口径统一为「当前列表」，避免筛选后数字互相矛盾 */
+const viewStats = computed(() => ({
+  total: items.value.length,
+  todo: items.value.filter((item) => !item.mastered).length,
+  mastered: items.value.filter((item) => item.mastered).length,
+  practisable: practisable.value,
+}))
+
 function onToggleMastered(item: VocabItem) {
   toggleMutation.mutate({ id: item.id, mastered: !item.mastered })
 }
@@ -107,10 +115,10 @@ function onDelete(item: VocabItem) {
           to="/vocab/practice"
           :title="practisable < 2 ? '至少需要 2 个带释义的生词' : '开始中译英 / 英译中练习'"
           :class="[
-            'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] transition-colors',
+            'flex items-center gap-1.5 rounded-full border-2 border-ink px-4 py-2.5 text-[13px] font-bold transition-transform',
             practisable >= 2
-              ? 'border border-ink bg-white text-ink hover:bg-lemon-100'
-              : 'pointer-events-none border border-ink bg-white text-ink-3',
+              ? 'bg-white text-ink hover:-translate-y-px hover:shadow-[0_3px_0_var(--ink)] active:translate-y-[2px] active:shadow-none'
+              : 'pointer-events-none bg-white text-ink-3',
           ]"
         >
           <TargetIcon class-name="h-3.5 w-3.5" />
@@ -120,10 +128,10 @@ function onDelete(item: VocabItem) {
         <a
           :href="vocabExportUrl(filter === 'mastered' ? true : undefined)"
           :class="[
-            'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] transition-colors',
+            'flex items-center gap-1.5 rounded-full border-2 border-ink px-4 py-2.5 text-[13px] font-bold shadow-[0_3px_0_var(--ink)] transition-transform',
             items.length
-              ? 'bg-lemon-400 text-ink hover:bg-lemon-300'
-              : 'pointer-events-none bg-cream-2 text-ink-2',
+              ? 'bg-lemon-400 text-ink hover:-translate-y-px hover:bg-lemon-300 active:translate-y-[3px] active:shadow-none'
+              : 'pointer-events-none border-cream-2 bg-cream-2 text-ink-2 shadow-none',
           ]"
         >
           <DownloadIcon class-name="h-3.5 w-3.5" />
@@ -132,20 +140,47 @@ function onDelete(item: VocabItem) {
       </div>
     </div>
 
-    <!-- 工具栏 -->
-    <div
-      class="flex flex-wrap items-center gap-3 rounded-xl border border-ink bg-white px-4 py-3"
-    >
-      <div class="flex items-center gap-1 rounded-lg bg-cream-2 p-0.5">
+    <!-- 统计四卡（D3）：口径 = 当前列表 -->
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div class="rounded-xl border-2 border-ink bg-white px-3.5 py-2.5">
+        <span class="block text-[11.5px] text-ink-3">当前列表</span>
+        <b class="mt-0.5 block text-[21px] font-extrabold leading-tight tabular-nums text-ink">
+          {{ viewStats.total }}<small class="ml-0.5 text-[11px] font-semibold text-ink-3">个</small>
+        </b>
+      </div>
+      <div class="rounded-xl border-2 border-ink bg-white px-3.5 py-2.5">
+        <span class="block text-[11.5px] text-ink-3">待复习</span>
+        <b class="mt-0.5 block text-[21px] font-extrabold leading-tight tabular-nums text-ink">
+          {{ viewStats.todo }}<small class="ml-0.5 text-[11px] font-semibold text-ink-3">个</small>
+        </b>
+      </div>
+      <div class="rounded-xl border-2 border-ink bg-white px-3.5 py-2.5">
+        <span class="block text-[11.5px] text-ink-3">已掌握</span>
+        <b class="mt-0.5 block text-[21px] font-extrabold leading-tight tabular-nums text-emerald-600">
+          {{ viewStats.mastered }}<small class="ml-0.5 text-[11px] font-semibold text-ink-3">个</small>
+        </b>
+      </div>
+      <div class="rounded-xl border-2 border-ink bg-lemon-100 px-3.5 py-2.5">
+        <span class="block text-[11.5px] text-ink-3">可练习</span>
+        <b class="mt-0.5 block text-[21px] font-extrabold leading-tight tabular-nums text-ink">
+          {{ viewStats.practisable }}<small class="ml-0.5 text-[11px] font-semibold text-ink-3">个</small>
+        </b>
+      </div>
+    </div>
+
+    <!-- 工具条（D3）：药丸 chips + 搜索 -->
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+      <div class="flex flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           v-for="item in FILTERS"
           :key="item.key"
           type="button"
+          :data-selected="filter === item.key ? 'true' : 'false'"
           :class="[
-            'rounded-md px-3 py-1 text-[12px] transition-colors',
+            'shrink-0 rounded-full border-2 px-3.5 py-1.5 text-[12.5px] font-bold transition-colors',
             filter === item.key
-              ? 'bg-white text-ink shadow-sm'
-              : 'text-ink-2 hover:text-ink',
+              ? 'border-ink bg-lemon-400 text-ink'
+              : 'border-ink/25 bg-white text-ink-2 hover:border-ink/50 hover:text-ink',
           ]"
           @click="filter = item.key"
         >
@@ -153,23 +188,21 @@ function onDelete(item: VocabItem) {
         </button>
       </div>
 
-      <div class="relative ml-auto w-full max-w-[240px]">
+      <div class="relative w-full sm:ml-auto sm:w-[220px]">
         <SearchIcon
           class-name="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
         />
         <input
           v-model="keyword"
           placeholder="搜索单词或释义…"
-          class="w-full rounded-lg border border-ink py-1.5 pl-8 pr-3 text-[12px] text-ink outline-none transition-colors focus:border-ink"
+          class="w-full rounded-full border-2 border-ink/25 py-1.5 pl-8 pr-3 text-[12.5px] text-ink outline-none transition-colors focus:border-ink"
         />
       </div>
-
-      <span class="text-[12px] text-ink-3">共 <span class="tabular-nums text-ink-2">{{ data?.total ?? 0 }}</span> 个<template v-if="data && data.mastered > 0">，已掌握 <span class="tabular-nums text-emerald-600">{{ data.mastered }}</span> 个</template></span>
     </div>
 
     <p
       v-if="isLoading"
-      class="rounded-xl border border-ink bg-white px-3 py-8 text-center text-[13px] text-ink-3 sm:px-5"
+      class="rounded-2xl border-2 border-ink bg-white px-3 py-8 text-center text-[13px] text-ink-3 sm:px-5"
     >
       加载中…
     </p>
@@ -183,7 +216,7 @@ function onDelete(item: VocabItem) {
 
     <div
       v-if="!isLoading && !isError && items.length === 0"
-      class="rounded-xl border border-ink bg-white px-3 py-12 text-center sm:px-5"
+      class="rounded-2xl border-2 border-ink bg-white px-3 py-12 text-center sm:px-5"
     >
       <BookIcon class-name="mx-auto h-8 w-8 text-ink-3" />
       <p class="mt-3 text-[13px] text-ink-3">
@@ -195,7 +228,21 @@ function onDelete(item: VocabItem) {
       </p>
     </div>
 
-    <div v-if="!isLoading && !isError && items.length > 0" class="space-y-2.5">
+    <div
+      v-if="!isLoading && !isError && items.length > 0"
+      class="overflow-hidden rounded-2xl border-2 border-ink bg-white"
+    >
+      <!-- 表头（PC only） -->
+      <div
+        class="hidden grid-cols-[minmax(0,1.05fr)_minmax(0,1.45fr)_minmax(0,.95fr)_88px_96px] items-center gap-3 border-b-2 border-ink bg-cream-2 px-4 py-2 text-[11px] font-bold tracking-[0.4px] text-ink-3 sm:grid"
+      >
+        <span>单词</span>
+        <span>释义</span>
+        <span>出处</span>
+        <span class="text-center">状态</span>
+        <span class="text-right">操作</span>
+      </div>
+
       <VocabRow
         v-for="item in items"
         :key="item.id"
