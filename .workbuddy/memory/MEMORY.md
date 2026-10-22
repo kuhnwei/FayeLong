@@ -17,7 +17,7 @@
 - 2026-10-22 进度：**重构全部完成并已上线**。前端链 P0–P2 + P3 + P4 + P5 全绿（均经 QA 独立复核）。本地 **378 passed / 1 skipped**、契约 **41/49**；云端 http://114.132.173.241/ 已跑 **Vue 版**，`fayelong` + `fayelong-worker` 双服务 active、`worker.mode=external`、写作批改 `off`（零付费降级）。
   - 🔴 **云端是 Python 3.12、本地是 3.13** —— 凡涉及 CPython 内部行为的改动（线程 / contextvars / asyncio），**本地全绿 ≠ 云端能跑**。踩过的实例：`_PoolRunner` 把停止信号命名 `self._stop`，与 `Thread._stop()` 冲突，3.12 的 join 收尾会调用它 → `TypeError: 'Event' object is not callable`，worker 一 stop 就崩；3.13 已移除该调用。已改名 `_stop_event` + 加结构性守卫。
   - ⭐ **云端部署口径**：库无 `alembic_version`、只有 8 表、venv 无 alembic → **不走迁移**，靠 `init_db()` 的 `create_all` + `_ensure_columns` 自愈（实测 18 表齐、旧表行数零漂移）。worker unit **必须先装再跑 update.sh**。
-  - ⭐ **回滚**：`STATIC_CANDIDATES` 改回 `frontend/dist` + 重启；但云端 `frontend/dist` 已被 Vue 替换，需先恢复 `/opt/fayelong/.backup/dist-20261022-145723`。
+  - ⭐ **回滚**：**旧 React 源码已于 2026-10-22 从仓库删除**（保留在 tag `frontend-react-final`）。回滚 = 从 tag 重建产物并置于 `STATIC_CANDIDATES` 首位；云端可直接用 `/opt/fayelong/.backup/dist-20261022-145723`（现成旧构建）。
   - ⭐ **P5 双跑**：7 脚本 × React(5173)/Vue(5174) = 193=193 零分歧；⚠️ 旧 React 的 vite 代理**写死 8000**，隔离后端必须占 8000，否则打真实库。
   - 🔴 **判产物来源不能用 `id="app"`** —— 两套 `index.html` **都是 `id="root"`**。正确判据：逐文件 md5 全等 + `__VUE__` 命中/`react.production` 为 0 + 旧 bundle 404。
   - 🔴 **版本库**：`frontend-vue/`、`tests/`、`migrations/`、`contracts/` 此前全 untracked（两周无基线），已补 6 个提交。**阶段结束必须 commit。**

@@ -1,21 +1,23 @@
-"""`app.core.config.static_dir()` 的候选选择测试 —— **锁的是 P5 回滚基石**。
+"""`app.core.config.static_dir()` 的候选选择测试 —— **锁的是前端切换语义**。
 
 为什么要单独一个文件
 --------------------
-`static_dir()` 决定后端托管哪一套前端产物。P5 起它同时是「Vue 现役 / React 回滚」
-的**唯一切换开关**：改 `STATIC_CANDIDATES` 的元组顺序 + 重启，后端代码零改动
-（见 `docs/REFACTOR-PLAN-001-执行计划.md` §8、`frontend/README.md`）。
+`static_dir()` 决定后端托管哪一套前端产物。它是「开发环境 Vue 产物 / 打包环境
+static」的唯一切换点：改 `STATIC_CANDIDATES` 的顺序 + 重启即生效，后端代码零改动
+（见 `docs/REFACTOR-PLAN-001-执行计划.md` §8/§9）。
 
-在 P5-2 之前它**零覆盖** —— 这不是「少写了几条用例」，而是回滚机制没有护栏：
+在 P5-2 之前它**零覆盖** —— 这不是「少写了几条用例」，而是切换机制没有护栏：
 一旦有人把「**第一个含 index.html 的候选胜出**」改成「后者优先」或「合并多个
-目录按修改时间取新」，整套用例仍会全绿，而线上切换/回滚会静默打错前端。
+目录按修改时间取新」，整套用例仍会全绿，而线上会静默挂错前端。
 
-本文件锁的四件事
+本文件锁的五件事
 ----------------
-1. 每个候选单独存在时都能被选中（Vue / React / 打包 static）；
-2. Vue 与 React 同时存在时**Vue 胜出**（现役顺序），把顺序调反即红；
-3. Vue 目录存在但**缺 index.html**（拷贝不完整）时**回落 React**，而不是返回空目录；
-4. 目录都在但都没有 index.html → `None`（`app/main.py` 据此决定是否注册 SPA 回退路由）。
+1. 每个候选单独存在时都能被选中（开发 Vue / 打包 static）；
+2. 两个候选同时在时**前者（Vue）胜出**，把顺序调反即换成后者；
+3. Vue 目录存在但**缺 index.html**（拷贝不完整）时**回落 static**，而不是返回空目录；
+4. 目录都在但都没有 index.html → `None`（`app/main.py` 据此决定是否注册 SPA 回退路由）；
+5. 真实元组里**不许再出现**已删除的 `frontend/dist`（2026-10-22 清理旧 React 后，
+   它是一条指向空目录的死候选；有人手滑加回来就红）。
 
 ⚠️ 纪律：本文件**绝不触碰真实仓库目录**。全部布局由 `tmp_path` 现造，
 只 patch 一个模块级常量 `app.core.config.STATIC_CANDIDATES`；`static_dir()`
@@ -31,10 +33,12 @@ import pytest
 
 from app.core import config
 
-#: 与 `config.STATIC_CANDIDATES` 一一对应的三个相对布局（顺序即优先级）。
+#: 与 `config.STATIC_CANDIDATES` 一一对应的两个相对布局（顺序即优先级）。
 _VUE_REL = Path("frontend-vue") / "dist"
-_REACT_REL = Path("frontend") / "dist"
 _PACKED_REL = Path("static")
+
+#: 2026-10-22 已删除的旧 React 产物路径（只用于「不许加回来」的断言）。
+_REMOVED_REACT_REL = Path("frontend") / "dist"
 
 
 def _make_dirs(tmp_path: Path, rels: tuple[Path, ...], *, with_index: bool = True) -> tuple[Path, ...]:
@@ -67,30 +71,19 @@ def _patch_candidates(monkeypatch: pytest.MonkeyPatch, ordered: tuple[Path, ...]
 def test_returns_vue_dir_when_only_vue_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """只有 Vue 产物 → 返回 Vue 目录（P5 起开发环境的常态）。"""
+    """只有 Vue 产物 → 返回 Vue 目录（开发环境的常态）。"""
     (vue,) = _make_dirs(tmp_path, (_VUE_REL,))
-    # 另两个候选目录**不创建**，模拟「React 产物已被清理 / 打包环境无源码目录」
-    _patch_candidates(monkeypatch, (vue, tmp_path / _REACT_REL, tmp_path / _PACKED_REL))
+    _patch_candidates(monkeypatch, (vue, tmp_path / _PACKED_REL))
 
     assert config.static_dir() == vue
-
-
-def test_returns_react_dir_when_only_react_present(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """只有旧 React 产物 → 返回 React 目录（回滚后的形态）。"""
-    (react,) = _make_dirs(tmp_path, (_REACT_REL,))
-    _patch_candidates(monkeypatch, (tmp_path / _VUE_REL, react, tmp_path / _PACKED_REL))
-
-    assert config.static_dir() == react
 
 
 def test_returns_packaged_static_when_only_static_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """打包环境（无 frontend-vue / frontend 源码，只有 static）→ 返回 static。"""
+    """打包环境（无 frontend-vue 源码，只有 static）→ 返回 static。"""
     (packed,) = _make_dirs(tmp_path, (_PACKED_REL,))
-    _patch_candidates(monkeypatch, (tmp_path / _VUE_REL, tmp_path / _REACT_REL, packed))
+    _patch_candidates(monkeypatch, (tmp_path / _VUE_REL, packed))
 
     assert config.static_dir() == packed
 
@@ -98,13 +91,13 @@ def test_returns_packaged_static_when_only_static_present(
 def test_returns_none_when_no_candidate_has_index_html(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """三个目录都在但都没有 index.html → None（前端未构建）。
+    """两个目录都在但都没有 index.html → None（前端未构建）。
 
     `app/main.py` 用 `static_dir() is None` 决定是否降级为 JSON 提示路由，
     所以这里必须是 None，不能「返回第一个存在的目录」。
     """
-    candidates = _make_dirs(tmp_path, (_VUE_REL, _REACT_REL, _PACKED_REL), with_index=False)
-    for rel in (_VUE_REL, _REACT_REL, _PACKED_REL):
+    candidates = _make_dirs(tmp_path, (_VUE_REL, _PACKED_REL), with_index=False)
+    for rel in (_VUE_REL, _PACKED_REL):
         assert not (tmp_path / rel / "index.html").exists()
 
     _patch_candidates(monkeypatch, candidates)
@@ -112,52 +105,55 @@ def test_returns_none_when_no_candidate_has_index_html(
     assert config.static_dir() is None
 
 
-def test_falls_back_to_react_when_vue_dir_has_no_index_html(
+def test_falls_back_to_static_when_vue_dir_has_no_index_html(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Vue 目录存在但**缺 index.html**（拷贝中断/构建失败）→ 必须回落 React。
+    """Vue 目录存在但**缺 index.html**（拷贝中断/构建失败）→ 必须回落 static。
 
     这是线上最危险的半成品状态：目录在、产物不全。若实现改成「看目录存在与否」，
-    后端会 mount 一个空目录 → 首页 404 白屏，回滚也失效。
+    后端会 mount 一个空目录 → 首页 404 白屏，且切换/回滚都失效。
     """
     (tmp_path / _VUE_REL).mkdir(parents=True)          # 只有空目录，刻意不写 index.html
-    (react,) = _make_dirs(tmp_path, (_REACT_REL,))
+    (packed,) = _make_dirs(tmp_path, (_PACKED_REL,))
 
-    _patch_candidates(monkeypatch, (tmp_path / _VUE_REL, react, tmp_path / _PACKED_REL))
+    _patch_candidates(monkeypatch, (tmp_path / _VUE_REL, packed))
 
-    assert config.static_dir() == react
+    assert config.static_dir() == packed
 
 
-def test_vue_wins_over_react_when_both_present(
+def test_first_candidate_wins_when_both_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """两端产物同时存在 → **前者（Vue）胜出**；把顺序调反则换成 React 胜出。
+    """两个候选同时存在 → **前者胜出**；把顺序调反则换成后者。
 
     这条同时锁两件事：
-      ① 首选顺序是 Vue（P5 现役）；
-      ② 语义是「按序第一个命中者胜出」而非「后者覆盖前者」——
-         所以回滚只需互换元组前两项，行为可预测。
+      ① 语义是「按序第一个命中者胜出」，而非「后者覆盖前者」；
+      ② 交换顺序即可切换前端（后端零改动），行为可预测。
     """
-    vue, react, packed = _make_dirs(tmp_path, (_VUE_REL, _REACT_REL, _PACKED_REL))
+    vue, packed = _make_dirs(tmp_path, (_VUE_REL, _PACKED_REL))
 
-    _patch_candidates(monkeypatch, (vue, react, packed))
-    assert config.static_dir() == vue, "Vue 与 React 同时存在时，元组首项必须胜出"
+    _patch_candidates(monkeypatch, (vue, packed))
+    assert config.static_dir() == vue, "两个候选都在时，元组首项必须胜出"
 
-    # 回滚演练：互换前两项 → 立刻切到 React（后端零改动）
-    _patch_candidates(monkeypatch, (react, vue, packed))
-    assert config.static_dir() == react, "互换前两项后必须切到 React（回滚路径）"
+    # 顺序互换演练：立刻换成后者
+    _patch_candidates(monkeypatch, (packed, vue))
+    assert config.static_dir() == packed, "互换顺序后必须切到后者"
 
 
-def test_real_candidates_order_is_vue_then_react_then_static() -> None:
-    """真实 `STATIC_CANDIDATES` 的顺序：Vue → React → static（不读文件系统）。
+def test_real_candidates_are_vue_then_static_and_exclude_removed_react() -> None:
+    """真实 `STATIC_CANDIDATES`：Vue → static，且**不含**已删除的 `frontend/dist`。
 
-    前面几条用 patch 后的假元组验证**语义**；这条验证**仓库里真实的那份顺序**
-    没被人改反 —— 只比较 `Path` 对象，不依赖磁盘上产物是否存在，因此
-    在「已构建 / 未构建」的任何机器上都稳定。
+    前面几条用 patch 后的假元组验证**语义**；这条验证**仓库里真实的那份**没被人改坏
+    —— 只比较 `Path` 对象，不依赖磁盘上产物是否存在，因此在「已构建 / 未构建」的
+    任何机器上都稳定。
     """
     root = config.ROOT_DIR
     assert config.STATIC_CANDIDATES == (
-        root / "frontend-vue" / "dist",   # 现役（P5 起）
-        root / "frontend" / "dist",       # 回滚兜底（tag: frontend-react-final）
+        root / "frontend-vue" / "dist",   # 开发环境（唯一现役前端）
         root / "static",                  # 打包环境
-    ), "STATIC_CANDIDATES 的顺序即回滚策略，改动前请先看 frontend/README.md 的回滚步骤"
+    ), "STATIC_CANDIDATES 的顺序即前端切换点，改动前请先看计划 §9 回滚预案"
+
+    assert (root / _REMOVED_REACT_REL) not in config.STATIC_CANDIDATES, (
+        "旧 React 的 frontend/dist 已于 2026-10-22 从仓库删除；"
+        "把它加回候选会得到一条永远指向空目录的死路径（真要用请先按 §9 从 tag 重建）"
+    )

@@ -33,10 +33,8 @@ DB_PATH = DATA_DIR / "app.db"
 #: ⚠️ **顺序即回滚策略**：`static_dir()` 取第一个含 `index.html` 的候选，故
 #: 回滚只需把 `frontend` / `frontend-vue` 两条互换（后端零改动），重启即生效。
 STATIC_CANDIDATES = (
-    # P5 起首选新 Vue 版（开发环境）
+    # 开发环境：Vue 版产物（2026-10-22 起唯一现役前端）
     ROOT_DIR / "frontend-vue" / "dist",
-    # 旧 React 版：回滚兜底，已冻结（tag: frontend-react-final），不再维护
-    ROOT_DIR / "frontend" / "dist",
     # 打包环境（`packaging/build.ps1` 把 frontend-vue/dist 拷成 static）
     ROOT_DIR / "static",
 )
@@ -228,8 +226,15 @@ def static_dir() -> Path | None:
     """返回可用的前端静态目录（不存在则 None）。
 
     按 `STATIC_CANDIDATES` 的顺序**取第一个含 index.html 的目录**——这个语义
-    是 P5 回滚策略的基石（改候选顺序 + 重启即回滚），**不要改成「后者优先」
-    或「合并多目录」**。
+    是切换前端的唯一切换点（改候选顺序 + 重启即生效），**不要改成「后者优先」
+    或「合并多目录」**：改成后者优先会让「Vue 目录不完整」时静默挂到旧产物上，
+    而「合并多目录」会让 `index.html` 与 `assets/*` 来自两个不同构建。
+
+    Notes:
+        2026-10-22 起旧 React（`frontend/dist`）已从仓库移除，候选只剩
+        「开发环境 Vue 产物」与「打包环境 static」。若要临时回滚到 React，
+        需先从 tag `frontend-react-final` 取回源码并构建（见
+        `docs/REFACTOR-PLAN-001-执行计划.md` §9 回滚预案）。
     """
     for candidate in STATIC_CANDIDATES:
         if (candidate / "index.html").is_file():

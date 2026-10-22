@@ -53,11 +53,11 @@
 `BASE_DIR=/opt/fayelong/backend` → `ROOT_DIR=/opt/fayelong` → `DATA_DIR=/opt/fayelong/data`、
 静态目录 `/opt/fayelong/frontend/dist`。**无需改动任何业务代码。**
 
-> **⚠️ P5 起的静态目录顺序（2026-10-22）**
-> `STATIC_CANDIDATES` 已改为 `(frontend-vue/dist, frontend/dist, static)` —— **首选是 Vue 版**，旧 React 仅作回滚兜底。
-> 上文「静态目录 `/opt/fayelong/frontend/dist`」之所以仍成立，是因为云端**还没放 `frontend-vue/dist` 产物**，于是回落到第二候选。
-> **云端切换 Vue 时必须同步更新本节**（把 `frontend-vue/dist` 传上去，或改候选顺序），否则文档与代码会打架。
-> 回滚 = 把 `STATIC_CANDIDATES` 首项改回 `frontend/dist` + 重启（详见 `frontend/README.md`）。
+> **⚠️ 静态目录（2026-10-22 起已切换并清理旧版）**
+> `STATIC_CANDIDATES = (frontend-vue/dist, static)` —— 开发环境用 Vue 产物，打包环境用 `static`。
+> 云端 `/opt/fayelong/frontend/dist` 目录里现在放的是 **Vue 产物**（部署时由 `update.sh` 从 `frontend-vue/dist` 拷入），**不是**旧 React。
+> 旧 React 源码已于 2026-10-22 从仓库移除，源码保留在 git tag `frontend-react-final`。
+> **回滚到旧 React**：先恢复构建产物（云端用 `/opt/fayelong/.backup/dist-20261022-145723`；本地从 tag 取源码重新 build），再把该目录放回候选首位 + 重启。详见 `docs/REFACTOR-PLAN-001-执行计划.md` §9。
 
 | 系统级文件 | 作用 |
 |---|---|

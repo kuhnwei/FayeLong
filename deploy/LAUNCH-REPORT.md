@@ -9,7 +9,7 @@
 | 平台 | 腾讯云轻量应用服务器 `ap-guangzhou / lhins-a0s35jwt` |
 | 系统 | Ubuntu 24.04.4 LTS x86_64，2 vCPU / 2 GB / 50 GB SSD |
 | 形态 | 源码原生部署（非 Windows 交付包）；Python 3.12 venv，单端口应用 |
-| 构建命令 | 无（前端产物 `frontend/dist` 直接拷贝；后端源码直跑） |
+| 构建命令 | 无（前端产物直接拷贝：2026-10-22 起为 `frontend-vue/dist`；此前为已删除的 `frontend/dist`） |
 | 产物目录 | `/opt/fayelong/{backend, frontend/dist}`；数据 `/opt/fayelong/data` |
 | 进程 | `uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1`（systemd 托管） |
 | 反向代理 | Caddy 2.11.4，`:80` → `127.0.0.1:8000`，gzip/zstd |

@@ -421,17 +421,17 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 
 ### P5-2 切换机制（0.5 天）
 - [x] `core/config.py` 的 `STATIC_CANDIDATES` 增加 `frontend-vue/dist` 候选（**先放第二位**，验证后再提到第一位）
-  - **实际一步到位放到第一位**，但保留 `frontend/dist` 作第二候选 → **顺序即回滚策略**：改前两项顺序 + 重启即可回滚
-  - `static_dir()` 函数体**一行未改**（仍是「按序取第一个含 index.html 的候选」），只补 docstring 说明「此语义是回滚基石」
-  - **7 条单测**（`tests/test_static_dir.py`）锁住：三组合各自胜出、都无 index.html 返回 `None`、**Vue 目录在但缺 index.html 必须回落 React**（线上最危险的半成品态）、顺序敏感性双向、**真实元组顺序**（有人调反真实元组就红）
+  - **实际一步到位放到第一位**，起初保留 `frontend/dist` 作第二候选（顺序即回滚策略）；**2026-10-22 用户决定删除旧 React 后，候选收敛为 `(frontend-vue/dist, static)`**，回滚改走「从 tag 重建产物 / 用云端备份 dist」
+  - `static_dir()` 函数体**一行未改**（仍是「按序取第一个含 index.html 的候选」），只补 docstring 说明「此语义是切换基石」
+  - **6 条单测**（`tests/test_static_dir.py`）锁住：两组合各自胜出、都无 index.html 返回 `None`、**Vue 目录在但缺 index.html 必须回落 static**（线上最危险的半成品态）、顺序敏感性双向（前者胜出而非后者覆盖）、**真实元组顺序**、以及**真实元组里不许再出现已删除的 `frontend/dist`**（防止死候选被加回来）
   - ⚠️ **「把真实元组调反」与「把语义改成后者优先」是两件事，红的也是两条不同用例** —— 只留顺序敏感性那条的话，真实元组被调反仍全绿（它自带假元组）
-- [ ] 云端 Caddy 灰度后再切；切换后校验**公网拉取 bundle 与本地 md5 一致**（等价于「线上跑的就是本地验过的那份」）→ **待云端，需用户确认**
+- [x] 云端硬切完成（2026-10-22 15:07）：**未走灰度**，一次性替换 + 双服务重启；公网 bundle md5 与本地一致即验收
 
 ### P5-3 冻结旧前端（0.5 天）
 - [x] 打 tag `frontend-react-final`（**未 push**，本机 origin/main 落后 13 个提交）
   - ⚠️ annotated tag 有**两个哈希**：`git rev-parse frontend-react-final` = `d7f5fa6`（tag 对象）、`^{commit}` = `fdf1ddc`（commit）。两人各报一个都"对"，曾经让我以为是笔误
 - [x] 在 `frontend/README` 顶部标注「已被 `frontend-vue/` 取代，仅作历史参考，不再维护」+ 回滚步骤 + 双跑端口表
-- [x] `frontend/` 目录**完整保留**（`frontend/dist` 仍是 React 产物，回滚兜底完好）
+- [x] ~~`frontend/` 目录完整保留（回滚兜底）~~ → **2026-10-22 用户决定删除**：`git rm -r frontend`（35 个文件）+ 清掉 `dist`/`node_modules` 残留；源码保留在 tag `frontend-react-final`，回滚改走 §9 的重建流程
 - ⛔ **绝不长期并行维护两套 SPA**（那是双倍成本，比不重构更糟）
 
 ### P5-4 打包与云端发布
@@ -453,7 +453,7 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 - **回滚口径（云端）**：`frontend/dist` 已被 Vue 产物替换，回滚需先恢复 `/opt/fayelong/.backup/dist-20261022-145723`（旧 React），再按需回退 `backend`。
 - [x] ⚠️ `data/` 全程只读不覆盖 → 实测行数逐项未变（只 `create_all` 补了新表与新列，未改写既有行）
 - [x] 写作批改本轮**不启用**：不配 `FAYELONG_GRADING_*`，保持 `off`（默认降级，零付费）。将来要启用只需在 `fayelong-worker.service` 注入变量后 `daemon-reload` + 重启
-- [x] `deploy/README.md` 补脚注：`STATIC_CANDIDATES[0]` 已是 `frontend-vue/dist`，云端因无该产物仍回落 `frontend/dist`，**切换时必须同步更新**（原文案结论对但理由错，属「最危险的那类陈旧注释」）
+- [x] `deploy/README.md` 静态目录说明改成 2026-10-22 后的实况：候选只有 `(frontend-vue/dist, static)`；云端 `/opt/fayelong/frontend/dist` 里放的是 **Vue 产物**；旧 React 只剩 git tag 与云端 `.backup` 备份
 
 ---
 
@@ -462,7 +462,7 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 | 阶段 | 回滚动作 | 耗时 |
 |---|---|---|
 | P0–P4 期间 | 前端未上线，后端改动均有 Alembic 可 downgrade + `data/backups/` 备份 | 分钟级 |
-| P5 切换后 | `STATIC_CANDIDATES` 改回 `frontend/dist` + `systemctl restart fayelong`（后端零改动，旧前端随时可用） | < 5 分钟 |
+| P5 切换后（**旧 React 已从仓库删除**） | **前端**：从 tag `frontend-react-final` 取源码重建（`git worktree add` → `npm install --ignore-scripts` → `npx vite build`），把产物放回并置于 `STATIC_CANDIDATES` 首位 + 重启；**云端**可直接用 `/opt/fayelong/.backup/dist-20261022-145723`（现成的旧 React 构建产物），省掉重建 | 10–15 分钟（云端用备份则 < 5 分钟） |
 | 后端恶化 | `data/backups/{app-<tag>-<ts>.db, code-*.tar.gz, web-*.tar.gz}` 还原 | 分钟级 |
 
 **回滚演练**（G5-③）：切换完成后主动演练一次，确认真的能回滚 —— 未演练的回滚方案等于没有。

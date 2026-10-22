@@ -86,7 +86,7 @@
 - **`Runtime.evaluate` 加 `returnByValue` 时返回值不能是 DOM 节点或 window** → `Object reference chain is too long`。修法：辅助脚本末尾 `return true`。
 - 注入页面脚本用 `const` 重复声明会 SyntaxError → 包 IIFE 挂 `window`。React 重渲染异步 → 点击后必须 `waitFor`。
 - **CDP 脚本的类务必写 `close()`**，`finally` 逐项 try/catch：否则 Chrome 成孤儿、WebSocket 吊住 Node → 脚本永不退出。
-- **改完前端源码必须 `vite build`（产物落 `frontend/dist`）再跑浏览器验证**，否则读到旧 bundle。
+- **改完前端源码必须 `vite build`（2026-10-22 起产物落 `frontend-vue/dist`；旧 `frontend/` 已删）再跑浏览器验证**，否则读到旧 bundle。
 
 ## 8. 必须自己写、不能靠框架的三处（易复发）
 - **embed Python `python313._pth` 是 isolated 模式**：`sys.path` 由该文件完全决定，**`PYTHONPATH` 被忽略**，必须写 `import site`。
@@ -119,9 +119,10 @@
 - ⚠️ **站点是走登录门禁的**（无 cookie `GET /api/media` → 401），并非「公开免登录」。云端账号密码在用户手里，本地默认测试号只对本地库有效。
 - 跨平台零改动的关键：`config.py` 路径全由 `__file__` 推导，靠 `backend/requirements.txt` 判定形态 → 服务器排成 `/opt/fayelong/backend/requirements.txt` 即自动得 `ROOT_DIR=/opt/fayelong`。
   服务 `fayelong.service`：`User=root`、`WorkingDirectory=/opt/fayelong/backend`、`/opt/fayelong/venv/bin/uvicorn app.main:app --port 8000`，`FAYELONG_*` 全在 unit 里注入。
-- **上线流程（可复用，已跑通 v1.12~v1.16）**：本地 Python `tarfile` 打包（**只含 `backend/app` + `frontend/dist`，排除 `__pycache__`/`.pyc`**）
+- **上线流程（可复用，已跑通 v1.12~v1.16 与 P5）**：打到 staging 目录（`backend/` + `frontend/dist`，其中 `frontend/dist` = **`frontend-vue/dist` 的拷贝**，排除 `__pycache__`/`.pyc`）
   → scp 到 `/tmp` → 服务器备份 `data/backups/{app-<tag>-<ts>.db, code-…tar.gz, web-…tar.gz}` → `systemctl stop fayelong`
-  → `rm -rf frontend/dist/assets`（清旧 bundle）→ `tar -xzf -C /opt/fayelong` → 清 `__pycache__` + `chown -R root:root` → `systemctl start` → 验证。
+  → 直接用 `deploy/linux/update.sh <staging>`（停双服务 → 原子替换 → pip → 起 `fayelong` + `fayelong-worker`）→ 验证公网 bundle md5。
+  ⚠️ **worker unit 必须先 `cp` 到 `/etc/systemd/system/` 再跑 update.sh**，否则它的 stop/start 找不到 unit。
   **`data/` 全程只读不覆盖。** 服务器只有 1 个媒体（114 句），本地 4 个 —— 差异是有意的。
 - 验证套路：`PRAGMA table_info` 查列 / **公网拉取 bundle 与本地比 md5**（等价于「线上跑的就是本地验过的那份」）/ `journalctl -u fayelong` 查 error。
 - 压缩用 Python `lzma`（本机**没有 xz 二进制**）。MCP `execute_command` **单条 ≤2048 字符**且**凡涉及 `/root/.ssh`、`sshd_config`、`/etc/caddy/Caddyfile` 一律 AccessDeny**（不能注公钥）—— 有 `fayelong_deploy` 私钥就别用它。
