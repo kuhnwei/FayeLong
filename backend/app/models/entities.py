@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -307,3 +309,245 @@ class Worker(Base):
     heartbeat_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     __table_args__ = (Index("ix_workers_heartbeat", "heartbeat_at"),)
+
+
+# ---------------------------------------------------------------------------
+# P4-3：IELTS 题库与作答（ADR-001 §5.5.2 的 6 张新表）
+#
+# 三条**不可谈判**的边界（改这个区块前先读 ADR-001 §5.5.2 与 Q4）：
+#   1. **不改 `media` / `sentences` / `attempts` 任何一个字段**。听力 section 复用现有
+#      音频靠 `sections.media_id`，听写题复用现有句子靠 `questions.ref_sentence_id`，
+#      历史数据零迁移、零风险。
+#   2. `options` / `answer` / `user_answer` / `detail` 一律 **JSON 列**。不同题型的答案
+#      形状差异极大（"A" / ["A","C"] / [可接受答案] / 范文+评分标准），硬拆列会不断
+#      `ALTER TABLE` —— 那正是 D1 债务的成因。
+#   3. **`media.status` 状态机与作答会话状态是两条独立的轴，不许合并**：前者是
+#      「素材处理进度」，后者是「考试作答进度」，生命周期与触发者完全不同。
+#
+# ⚠️ 对外引用（`sections.media_id` / `questions.ref_sentence_id`）**刻意不加外键**，
+#    与 `jobs.ref_id` 同一条理由：加 FK 后删素材/删句只有两个选择 —— 级联删掉试卷
+#    结构，或 SET NULL 留下指向虚无的题。删素材时的清理应由应用层显式做（IELTS 的
+#    UI 落地时再补，本阶段没有入口能删它）。内部父子关系（paper→section→passage→
+#    question、session→response）则**全部**带 FK + CASCADE：它们是一个整体，
+#    父行没了子行必然无意义。
+# ---------------------------------------------------------------------------
+
+
+class Paper(Base):
+    """试卷（IELTS 套题的顶层容器）。
+
+    Attributes:
+        mode: `full_mock`（整套模考）/ `section_drill`（单项练习）。
+        tags: JSON 数组（标签字符串），**永不为 NULL**（默认 `[]`），
+            这样前端不必判空，也不会出现 `NULL` 与 `[]` 两种「空」。
+    """
+
+    __tablename__ = "papers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    #: full_mock | section_drill
+    mode: Mapped[str] = mapped_column(String(16), default="full_mock")
+    #: 出处（如 "Cambridge 4 Test 1"），纯展示用
+    source: Mapped[str] = mapped_column(String(255), default="")
+    #: JSON 数组：标签
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    sections: Mapped[list["Section"]] = relationship(
+        back_populates="paper", cascade="all, delete-orphan"
+    )
+
+
+class Section(Base):
+    """分卷（听力 / 阅读 / 写作 / 口语）。
+
+    Attributes:
+        kind: `listening` | `reading` | `writing` | `speaking`。
+        ordinal: 卷内顺序（0 基）。
+        time_limit_sec: 限时（秒）；0 = 不限时。
+        media_id: **听力** section 复用的现有音频（指向 `media.id`，**无外键**，
+            理由见本区块顶部）。阅读/写作 section 为 NULL。
+    """
+
+    __tablename__ = "sections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    paper_id: Mapped[int] = mapped_column(
+        ForeignKey("papers.id", ondelete="CASCADE"), index=True
+    )
+    #: listening | reading | writing | speaking
+    kind: Mapped[str] = mapped_column(String(16), default="")
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    #: 限时（秒）；0 = 不限时。限时落在 section 上，**不污染** media 状态机。
+    time_limit_sec: Mapped[int] = mapped_column(Integer, default=0)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    #: 听力 section 复用的音频（media.id）；无外键
+    media_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    paper: Mapped[Paper] = relationship(back_populates="sections")
+    passages: Mapped[list["Passage"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan"
+    )
+    questions: Mapped[list["Question"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan"
+    )
+
+
+class Passage(Base):
+    """阅读文章（`body_md` 存 Markdown 正文）。"""
+
+    __tablename__ = "passages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    section_id: Mapped[int] = mapped_column(
+        ForeignKey("sections.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    body_md: Mapped[str] = mapped_column(Text, default="")
+
+    section: Mapped[Section] = relationship(back_populates="passages")
+    questions: Mapped[list["Question"]] = relationship(back_populates="passage")
+
+
+class Question(Base):
+    """一道题。
+
+    Attributes:
+        type: 题型 `code`（与 `services/question_types` 的注册表同名，
+            如 `dictation` / `writing` / `reading_mcq`）。**判分入口由它决定**，
+            因此它不是一个自由的展示字段。
+        answer: JSON，**标准答案 + 评分标准**。⚠️ **绝不下发给客户端**
+            （见 `api/papers.py` 的「answer 不下发」铁律）。
+        ref_sentence_id: `type='dictation'` 时指向 `sentences.id`（无外键，理由同上）。
+    """
+
+    __tablename__ = "questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    section_id: Mapped[int] = mapped_column(
+        ForeignKey("sections.id", ondelete="CASCADE"), index=True
+    )
+    passage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("passages.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    #: 题型 code（决定判分器与前端组件）
+    type: Mapped[str] = mapped_column(String(32), default="")
+    stem: Mapped[str] = mapped_column(Text, default="")
+    #: JSON 数组：选项（选择题）。非选择题为 []
+    options: Mapped[list] = mapped_column(JSON, default=list)
+    #: JSON：标准答案 / 评分标准。**永不下发**
+    answer: Mapped[dict] = mapped_column(JSON, default=dict)
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    #: 听写题复用的现有句子（sentences.id）；无外键
+    ref_sentence_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    section: Mapped[Section] = relationship(back_populates="questions")
+    passage: Mapped[Passage | None] = relationship(back_populates="questions")
+
+
+class PracticeSession(Base):
+    """一次作答会话（考试流程的那条轴）。
+
+    状态机（**与 `media.status` 完全无关**，两条轴不许合并）::
+
+        in_progress  ──交卷──┬─ 全部 sync 题当场判完 ──► graded
+                            └─ 有 async 题入队       ──► grading ──worker──┬─► graded
+                                                                          └─► degraded
+
+    * `in_progress`：开始作答，可反复 `PATCH .../responses`；
+    * `grading`：已交卷，仍有题在 `jobs` 里等 IO 池判（写作批改）；
+    * `graded`：全部判完；
+    * `degraded`：全部判完，但至少一题走了降级路径（外部服务不可用/关停/超配额）
+      —— **它是成功态，不是失败态**（ADR-001 §7.1 第 3 条：绝不因第三方挂了导致
+      交卷不可用）。
+
+    ⚠️ 刻意**没有** `submitted` 这个中间态：交卷要么当场判完（→ `graded`），要么
+    入队等判（→ `grading`），一个会立刻被下一个状态取代的「已提交」既无法观测，
+    也会诱导调用方误以为「提交了就算完成」。
+
+    Attributes:
+        paper_id: 所属试卷；`NULL` = 无试卷的自由练习（`draft_kind` 说明形态）。
+        time_spent_sec: 交卷时由客户端上报（0 = 未知）。
+    """
+
+    __tablename__ = "practice_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    paper_id: Mapped[int | None] = mapped_column(
+        ForeignKey("papers.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: 无试卷练习的形态标识（如 "writing_draft"）
+    draft_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: in_progress | grading | graded | degraded（见类 docstring）
+    status: Mapped[str] = mapped_column(String(16), default="in_progress")
+    time_spent_sec: Mapped[int] = mapped_column(Integer, default=0)
+
+    responses: Mapped[list["Response"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class Response(Base):
+    """逐题作答（`(session_id, question_id)` 唯一，upsert 语义）。
+
+    Attributes:
+        score / max_score / graded_at: **可空**，`NULL` = 尚未判分（异步题在等
+            `grade_writing` job）。这不是「判了 0 分」，两者必须区分得出来。
+        detail: JSON，判分明细（词级 diff / 评分细则 / 降级说明）。
+    """
+
+    __tablename__ = "responses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("practice_sessions.id", ondelete="CASCADE"), index=True
+    )
+    question_id: Mapped[int] = mapped_column(
+        ForeignKey("questions.id", ondelete="CASCADE"), index=True
+    )
+    #: JSON：用户作答（形状由题型决定）
+    user_answer: Mapped[dict] = mapped_column(JSON, default=dict)
+    #: 得分；NULL = 未判分
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: JSON：判分明细
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    session: Mapped[PracticeSession] = relationship(back_populates="responses")
+
+    __table_args__ = (
+        # 一题一次作答：暂存是 UPDATE 而不是 INSERT 新行（upsert 的数据库侧保证）
+        UniqueConstraint(
+            "session_id", "question_id", name="uq_responses_session_question"
+        ),
+    )
+
+
+class WritingGradeCache(Base):
+    """写作批改结果缓存（P4-4 · ADR-001 §7.1 第 2 条「结果必须缓存」）。
+
+    key = `sha1(question_id + "\\x00" + normalized_response)`。
+
+    为什么必须缓存：一次写作批改是一次**付费**的外部调用。同一篇作文反复提交
+    （刷新、重试、同一个模板句）不该重复付费。语义上它等价于 `translations`
+    表的 sha1 key 模式，只是 value 是结构化判分结果。
+
+    ⚠️ **只缓存「真的调过外部服务」的结果**，降级结果（关闭 / 超配额 / 外部失败）
+    **不写缓存** —— 否则用户在关掉 provider 时跑一遍，之后启用 provider 也永远拿到
+    那份降级结果，等于把「临时降级」固化成「永久结论」。
+    """
+
+    __tablename__ = "writing_grade_cache"
+
+    #: sha1 十六进制（64 字符列宽足够）
+    content_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    question_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: 结构化判分结果（GradeResult.as_dict()）
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

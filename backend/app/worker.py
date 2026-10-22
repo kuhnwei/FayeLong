@@ -47,6 +47,7 @@ from app.db import SessionLocal, init_db
 from app.models import Job
 from app.services import jobs as jobs_service
 from app.services import media as media_service
+from app.services import grading as grading_service
 from app.services.jobs import JobAborted, JobCtx
 
 logger = logging.getLogger(__name__)
@@ -76,16 +77,28 @@ def _handle_clip(ctx: JobCtx) -> None:
     media_service.stage_clip(ctx.ref_id, ctx)
 
 
+def _handle_grade_writing(ctx: JobCtx) -> None:
+    """P4-4：写作批改（IO 池）。`ctx.ref_id` = `responses.id`。
+
+    Notes:
+        真正的判分在 :func:`app.services.grading.service.run_grade_job` 里：它负责
+        缓存 / 成本闸 / 降级 / 落库与 fencing。这里只做一个转发，好处是
+        `worker.py` 不必 import 题型与 provider（那些模块的依赖面比调度层大得多）。
+    """
+    grading_service.run_grade_job(ctx)
+
+
 #: `KIND_*` → 执行函数。
 #: ⚠️ **必须是模块级、可原地 patch 的普通 dict**：`tests/test_worker_pools.py` 靠
 #: `Worker.HANDLERS[kind] = fake` 注入「慢 ASR / 快翻译」，从而不依赖 whisper
 #: 模型、ffmpeg 与网络（G3-③ 才可能 1 秒内跑完且可重复）。
-#: `grade_writing` 本阶段**刻意不登记**（P4-4 才实现），未登记的 kind 会被判失败。
+#: `grade_writing` 自 P4-4 起**已登记**（此前刻意不登记 → 未登记的 kind 会被判失败）。
 HANDLERS: dict[str, Handler] = {
     jobs_service.KIND_TRANSCODE: _handle_transcode,
     jobs_service.KIND_ASR: _handle_asr,
     jobs_service.KIND_TRANSLATE: _handle_translate,
     jobs_service.KIND_CLIP: _handle_clip,
+    jobs_service.KIND_GRADE_WRITING: _handle_grade_writing,
 }
 
 #: 维护线程的 tick（秒）。用它把三个不同周期的动作（心跳/续租/恢复）挂在一条

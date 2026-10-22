@@ -188,3 +188,31 @@ def db_session():
         yield db
     finally:
         db.close()
+
+
+@pytest.fixture()
+def authed_client(client):
+    """带**有效会话 cookie** 的 `TestClient`（用于受登录门禁保护的端点）。
+
+    做法：直接签发一个 token 塞进 cookie，走的是与真实登录完全相同的签名路径
+    （`auth_service.issue_token`），因此守卫中间件会当真会话处理 ——
+    不需要建账号、不需要密码，也不会因为别的用例清过 `users` 表而失效。
+
+    Notes:
+        用法与 `client` 一致；用例结束后清掉 cookie，避免污染共享的 session 级
+        `TestClient`（其它模块的用例会断言「未登录 → 401」）。
+    """
+    from app.db import SessionLocal
+    from app.services import auth as auth_service
+
+    db = SessionLocal()
+    try:
+        secret = auth_service.get_secret(db)
+    finally:
+        db.close()
+    token = auth_service.issue_token(1, secret, 600)
+    client.cookies.set(auth_service.COOKIE_NAME, token)
+    try:
+        yield client
+    finally:
+        client.cookies.clear()

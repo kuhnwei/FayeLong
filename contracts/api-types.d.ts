@@ -534,6 +534,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/papers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Papers
+         * @description 试卷列表（新的在前）。
+         *
+         *     Notes:
+         *         计数（`section_count` / `question_count`）由两个聚合子查询一次算完，
+         *         **不会**为每张卷子再查一次（N+1 是这类列表接口最常见的性能坑）。
+         */
+        get: operations["list_papers_api_papers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/papers/{paper_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Paper
+         * @description 试卷结构（无答案）。
+         *
+         *     Raises:
+         *         HTTPException: 404 —— 试卷不存在。
+         */
+        get: operations["get_paper_api_papers__paper_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/papers/{paper_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Session
+         * @description 开始一次作答（`status='in_progress'`）。
+         *
+         *     Raises:
+         *         HTTPException: 404 —— 试卷不存在。
+         */
+        post: operations["create_session_api_papers__paper_id__sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/question-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Question Types
+         * @description 下发全部已注册题型（code / label / grade_mode / requires_external）。
+         *
+         *     Returns:
+         *         `{"types": [...]}`，按 `code` 升序；注册表为空时返回 `{"types": []}`。
+         *
+         *     Notes:
+         *         端点以 **GET `/api/question-types`** 暴露（与现有 34 个端点同一风格：
+         *         复数资源名 + 无尾部斜杠）。它受 `main.py` 的全局登录门禁保护 ——
+         *         清单里不含任何题目内容，但仍然不该给未登录者看站点结构。
+         */
+        get: operations["list_question_types_api_question_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sentences/{sentence_id}": {
         parameters: {
             query?: never;
@@ -633,6 +731,81 @@ export interface paths {
          * @description 在 `at_ms` 处把一句拆成两句。
          */
         post: operations["split_sentence_api_sentences__sentence_id__split_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Report
+         * @description 成绩报告（`pending > 0` 时说明还有题在等判分，不是错误）。
+         *
+         *     Raises:
+         *         HTTPException: 404 会话不存在；**409 尚未交卷**（报告是交卷后的成绩单）。
+         */
+        get: operations["get_report_api_sessions__session_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Responses
+         * @description 暂存/更新作答（批量 upsert：同一题重复提交是覆盖，不是新增）。
+         *
+         *     Raises:
+         *         HTTPException: 404 会话不存在；409 已交卷；400 题号不属于本试卷。
+         */
+        patch: operations["patch_responses_api_sessions__session_id__responses_patch"];
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Session
+         * @description 交卷判分。
+         *
+         *     Notes:
+         *         * **幂等**：重复提交不重新判分；只会为「已交卷但还没入队」的异步题补入队。
+         *         * 返回值里 `status='grading'` + `pending>0` 意味着写作批改还在 worker 里跑，
+         *           前端应轮询 `GET /api/sessions/{id}/report`（**交卷请求绝不阻塞**）。
+         *         * 请求线程**绝不**调用外部批改服务：async 题只入队。
+         *
+         *     Raises:
+         *         HTTPException: 404 会话不存在；409 还没有作答。
+         */
+        post: operations["submit_session_api_sessions__session_id__submit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1370,12 +1543,366 @@ export interface components {
              */
             content: string;
         };
+        /**
+         * PaperDetailOut
+         * @description `GET /api/papers/{id}` 的响应（结构树，无任何答案）。
+         */
+        PaperDetailOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Mode
+             * @default
+             */
+            mode: string;
+            /** Sections */
+            sections?: components["schemas"]["SectionOut"][];
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /**
+         * PaperListResponse
+         * @description `GET /api/papers` 的响应。
+         */
+        PaperListResponse: {
+            /** Items */
+            items?: components["schemas"]["PaperOut"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * PaperOut
+         * @description 试卷列表项（含计数，避免前端为每张卷子再发一次请求）。
+         */
+        PaperOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Mode
+             * @description full_mock | section_drill
+             */
+            mode: string;
+            /**
+             * Question Count
+             * @default 0
+             */
+            question_count: number;
+            /**
+             * Section Count
+             * @default 0
+             */
+            section_count: number;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /**
+         * PassageOut
+         * @description 一篇文章 + 它的题（**只包含 passage_id 指向它的题**）。
+         */
+        PassageOut: {
+            /**
+             * Body Md
+             * @default
+             */
+            body_md: string;
+            /** Id */
+            id: number;
+            /** Ordinal */
+            ordinal: number;
+            /** Questions */
+            questions?: components["schemas"]["QuestionOut"][];
+            /** Section Id */
+            section_id: number;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
         /** PasswordChange */
         PasswordChange: {
             /** Current Password */
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /**
+         * QuestionOut
+         * @description 一道题的**公开**视图（无 answer / explanation）。
+         */
+        QuestionOut: {
+            /** Id */
+            id: number;
+            /**
+             * Options
+             * @description 选项；非选择题为空
+             */
+            options?: unknown[];
+            /**
+             * Ordinal
+             * @description 卷内题号（0 基）
+             */
+            ordinal: number;
+            /**
+             * Passage Id
+             * @description 归属文章；听力/独立题为 null
+             */
+            passage_id?: number | null;
+            /**
+             * Ref Sentence Id
+             * @description 听写题复用的句子 id（句子内容走 /api/sentences）
+             */
+            ref_sentence_id?: number | null;
+            /** Section Id */
+            section_id: number;
+            /**
+             * Stem
+             * @description 题干
+             * @default
+             */
+            stem: string;
+            /**
+             * Type
+             * @description 题型 code，与 /api/question-types 对齐
+             */
+            type: string;
+        };
+        /**
+         * QuestionTypeListOut
+         * @description `GET /api/question-types` 的响应体；注册表为空时 `types == []`。
+         */
+        QuestionTypeListOut: {
+            /** Types */
+            types?: components["schemas"]["QuestionTypeOut"][];
+        };
+        /**
+         * QuestionTypeOut
+         * @description 一个题型的契约四元组。
+         */
+        QuestionTypeOut: {
+            /**
+             * Code
+             * @description 题型标识，与前端 question-types 目录同名
+             */
+            code: string;
+            /**
+             * Grade Mode
+             * @description 判分模式：sync=纯函数就地判分；async=入 jobs 表由 IO 池判分
+             * @enum {string}
+             */
+            grade_mode: "sync" | "async";
+            /**
+             * Label
+             * @description 中文展示名（为空时后端已按 code 兜底）
+             */
+            label: string;
+            /**
+             * Requires External
+             * @description 判分是否依赖外部服务；为真时前端应展示降级提示
+             * @default false
+             */
+            requires_external: boolean;
+        };
+        /**
+         * ReportItemOut
+         * @description 成绩报告里的单题明细。
+         *
+         *     与 `QuestionOut` 的区别：**这里下发 `explanation`** —— 交卷之后看解析是学习，
+         *     不是作弊（未交卷时 `GET /api/papers/{id}` 仍然不含它）。
+         */
+        ReportItemOut: {
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Explanation
+             * @default
+             */
+            explanation: string;
+            /**
+             * Graded
+             * @default false
+             */
+            graded: boolean;
+            /** Max Score */
+            max_score?: number | null;
+            /**
+             * Ordinal
+             * @default 0
+             */
+            ordinal: number;
+            /** Question Id */
+            question_id: number;
+            /** Response Id */
+            response_id?: number | null;
+            /** Score */
+            score?: number | null;
+            /**
+             * Stem
+             * @default
+             */
+            stem: string;
+            /**
+             * Type
+             * @default
+             */
+            type: string;
+            /** User Answer */
+            user_answer?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ReportOut
+         * @description `GET /api/sessions/{id}/report` 的响应。
+         *
+         *     `pending > 0` 时报告**不是错误**：写作批改还在 worker 里跑，前端应继续轮询
+         *     （这正是「交卷不阻塞」的代价与证据）。
+         */
+        ReportOut: {
+            /** Items */
+            items?: components["schemas"]["ReportItemOut"][];
+            /**
+             * Max Score
+             * @default 0
+             */
+            max_score: number;
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            session: components["schemas"]["SessionOut"];
+            /**
+             * Total Score
+             * @default 0
+             */
+            total_score: number;
+        };
+        /**
+         * ResponseIn
+         * @description 暂存作答的单条输入。
+         */
+        ResponseIn: {
+            /**
+             * Answer
+             * @description 作答内容（形状由题型决定）
+             */
+            answer?: {
+                [key: string]: unknown;
+            };
+            /** Question Id */
+            question_id: number;
+        };
+        /**
+         * ResponseOut
+         * @description 一条作答（**不含判分明细**）。
+         *
+         *     🔴 **刻意没有 `detail` 字段**：`detail` 会包含听写题的 `expected`（正确答案）
+         *     与写作题的 `reference_answer`，属「交卷后才允许披露」的内容。它只经
+         *     `ReportItemOut`（`GET /api/sessions/{id}/report`，未交卷直接 409）下发。
+         *     暂存/交卷两条响应都返回 `SessionOut`，因此在这两侧都**不可能**把它带出来 ——
+         *     这比「序列化时记得删掉」可靠得多。
+         */
+        ResponseOut: {
+            /** Graded At */
+            graded_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Max Score
+             * @description null = 尚未判分
+             */
+            max_score?: number | null;
+            /** Question Id */
+            question_id: number;
+            /**
+             * Score
+             * @description null = 尚未判分
+             */
+            score?: number | null;
+            /** User Answer */
+            user_answer?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ResponsesPatch
+         * @description `PATCH /api/sessions/{id}/responses` 的请求体（**批量 upsert**）。
+         */
+        ResponsesPatch: {
+            /** Responses */
+            responses?: components["schemas"]["ResponseIn"][];
+            /**
+             * Time Spent Sec
+             * @description 客户端已用时长（秒）；不传则不改
+             */
+            time_spent_sec?: number | null;
+        };
+        /**
+         * SectionOut
+         * @description 一个分卷 + 直属题（passage_id 为空的题，例如听力/写作）。
+         */
+        SectionOut: {
+            /** Id */
+            id: number;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            /**
+             * Kind
+             * @description listening | reading | writing | speaking
+             */
+            kind: string;
+            /**
+             * Media Id
+             * @description 听力复用的音频（media.id）；其它题型为 null
+             */
+            media_id?: number | null;
+            /** Ordinal */
+            ordinal: number;
+            /** Paper Id */
+            paper_id: number;
+            /** Passages */
+            passages?: components["schemas"]["PassageOut"][];
+            /** Questions */
+            questions?: components["schemas"]["QuestionOut"][];
+            /**
+             * Time Limit Sec
+             * @description 限时（秒）；0 = 不限时
+             * @default 0
+             */
+            time_limit_sec: number;
         };
         /**
          * SentenceMergeIn
@@ -1462,6 +1989,62 @@ export interface components {
             text_en?: string | null;
             /** Text Zh */
             text_zh?: string | null;
+        };
+        /**
+         * SessionOut
+         * @description 会话视图（作答进度 + 汇总）。
+         */
+        SessionOut: {
+            /**
+             * Answered
+             * @description 已作答条数
+             * @default 0
+             */
+            answered: number;
+            /** Draft Kind */
+            draft_kind?: string | null;
+            /**
+             * Graded
+             * @description 已判分条数
+             * @default 0
+             */
+            graded: number;
+            /** Id */
+            id: number;
+            /**
+             * Max Score
+             * @default 0
+             */
+            max_score: number;
+            /** Paper Id */
+            paper_id?: number | null;
+            /**
+             * Pending
+             * @description 尚未判分条数（>0 时前端应轮询）
+             * @default 0
+             */
+            pending: number;
+            /** Responses */
+            responses?: components["schemas"]["ResponseOut"][];
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @description in_progress | grading | graded | degraded
+             */
+            status: string;
+            /** Submitted At */
+            submitted_at?: string | null;
+            /**
+             * Time Spent Sec
+             * @default 0
+             */
+            time_spent_sec: number;
+            /**
+             * Total Score
+             * @default 0
+             */
+            total_score: number;
         };
         /**
          * StatsOut
@@ -2542,6 +3125,108 @@ export interface operations {
             };
         };
     };
+    list_papers_api_papers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperListResponse"];
+                };
+            };
+        };
+    };
+    get_paper_api_papers__paper_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paper_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_session_api_papers__paper_id__sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paper_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_question_types_api_question_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionTypeListOut"];
+                };
+            };
+        };
+    };
     update_sentence_api_sentences__sentence_id__patch: {
         parameters: {
             query?: never;
@@ -2698,6 +3383,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MediaDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_api_sessions__session_id__report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_responses_api_sessions__session_id__responses_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResponsesPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_session_api_sessions__session_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
                 };
             };
             /** @description Validation Error */

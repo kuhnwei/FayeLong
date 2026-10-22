@@ -1187,6 +1187,180 @@
         "title": "NoteUpsert",
         "type": "object"
       },
+      "PaperDetailOut": {
+        "description": "`GET /api/papers/{id}` 的响应（结构树，无任何答案）。",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "",
+            "title": "Mode",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "PaperDetailOut",
+        "type": "object"
+      },
+      "PaperListResponse": {
+        "description": "`GET /api/papers` 的响应。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaperOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "PaperListResponse",
+        "type": "object"
+      },
+      "PaperOut": {
+        "description": "试卷列表项（含计数，避免前端为每张卷子再发一次请求）。",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "full_mock | section_drill",
+            "title": "Mode",
+            "type": "string"
+          },
+          "question_count": {
+            "default": 0,
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "section_count": {
+            "default": 0,
+            "title": "Section Count",
+            "type": "integer"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode"
+        ],
+        "title": "PaperOut",
+        "type": "object"
+      },
+      "PassageOut": {
+        "description": "一篇文章 + 它的题（**只包含 passage_id 指向它的题**）。",
+        "properties": {
+          "body_md": {
+            "default": "",
+            "title": "Body Md",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOut"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "integer"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "section_id",
+          "ordinal"
+        ],
+        "title": "PassageOut",
+        "type": "object"
+      },
       "PasswordChange": {
         "properties": {
           "current_password": {
@@ -1207,6 +1381,73 @@
           "new_password"
         ],
         "title": "PasswordChange",
+        "type": "object"
+      },
+      "QuestionOut": {
+        "description": "一道题的**公开**视图（无 answer / explanation）。",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "options": {
+            "description": "选项；非选择题为空",
+            "items": {},
+            "title": "Options",
+            "type": "array"
+          },
+          "ordinal": {
+            "description": "卷内题号（0 基）",
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "passage_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "归属文章；听力/独立题为 null",
+            "title": "Passage Id"
+          },
+          "ref_sentence_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "听写题复用的句子 id（句子内容走 /api/sentences）",
+            "title": "Ref Sentence Id"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "integer"
+          },
+          "stem": {
+            "default": "",
+            "description": "题干",
+            "title": "Stem",
+            "type": "string"
+          },
+          "type": {
+            "description": "题型 code，与 /api/question-types 对齐",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "section_id",
+          "ordinal",
+          "type"
+        ],
+        "title": "QuestionOut",
         "type": "object"
       },
       "QuestionTypeListOut": {
@@ -1258,6 +1499,297 @@
           "grade_mode"
         ],
         "title": "QuestionTypeOut",
+        "type": "object"
+      },
+      "ReportItemOut": {
+        "description": "成绩报告里的单题明细。\n\n与 `QuestionOut` 的区别：**这里下发 `explanation`** —— 交卷之后看解析是学习，\n不是作弊（未交卷时 `GET /api/papers/{id}` 仍然不含它）。",
+        "properties": {
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "explanation": {
+            "default": "",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "graded": {
+            "default": false,
+            "title": "Graded",
+            "type": "boolean"
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Score"
+          },
+          "ordinal": {
+            "default": 0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "integer"
+          },
+          "response_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Id"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "stem": {
+            "default": "",
+            "title": "Stem",
+            "type": "string"
+          },
+          "type": {
+            "default": "",
+            "title": "Type",
+            "type": "string"
+          },
+          "user_answer": {
+            "additionalProperties": true,
+            "title": "User Answer",
+            "type": "object"
+          }
+        },
+        "required": [
+          "question_id"
+        ],
+        "title": "ReportItemOut",
+        "type": "object"
+      },
+      "ReportOut": {
+        "description": "`GET /api/sessions/{id}/report` 的响应。\n\n`pending > 0` 时报告**不是错误**：写作批改还在 worker 里跑，前端应继续轮询\n（这正是「交卷不阻塞」的代价与证据）。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "max_score": {
+            "default": 0.0,
+            "title": "Max Score",
+            "type": "number"
+          },
+          "pending": {
+            "default": 0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionOut"
+          },
+          "total_score": {
+            "default": 0.0,
+            "title": "Total Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "session"
+        ],
+        "title": "ReportOut",
+        "type": "object"
+      },
+      "ResponseIn": {
+        "description": "暂存作答的单条输入。",
+        "properties": {
+          "answer": {
+            "additionalProperties": true,
+            "description": "作答内容（形状由题型决定）",
+            "title": "Answer",
+            "type": "object"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question_id"
+        ],
+        "title": "ResponseIn",
+        "type": "object"
+      },
+      "ResponseOut": {
+        "description": "一条作答（**不含判分明细**）。\n\n🔴 **刻意没有 `detail` 字段**：`detail` 会包含听写题的 `expected`（正确答案）\n与写作题的 `reference_answer`，属「交卷后才允许披露」的内容。它只经\n`ReportItemOut`（`GET /api/sessions/{id}/report`，未交卷直接 409）下发。\n暂存/交卷两条响应都返回 `SessionOut`，因此在这两侧都**不可能**把它带出来 ——\n这比「序列化时记得删掉」可靠得多。",
+        "properties": {
+          "graded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null = 尚未判分",
+            "title": "Max Score"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "integer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null = 尚未判分",
+            "title": "Score"
+          },
+          "user_answer": {
+            "additionalProperties": true,
+            "title": "User Answer",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "question_id"
+        ],
+        "title": "ResponseOut",
+        "type": "object"
+      },
+      "ResponsesPatch": {
+        "description": "`PATCH /api/sessions/{id}/responses` 的请求体（**批量 upsert**）。",
+        "properties": {
+          "responses": {
+            "items": {
+              "$ref": "#/components/schemas/ResponseIn"
+            },
+            "title": "Responses",
+            "type": "array"
+          },
+          "time_spent_sec": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "客户端已用时长（秒）；不传则不改",
+            "title": "Time Spent Sec"
+          }
+        },
+        "title": "ResponsesPatch",
+        "type": "object"
+      },
+      "SectionOut": {
+        "description": "一个分卷 + 直属题（passage_id 为空的题，例如听力/写作）。",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "kind": {
+            "description": "listening | reading | writing | speaking",
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "听力复用的音频（media.id）；其它题型为 null",
+            "title": "Media Id"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/components/schemas/PassageOut"
+            },
+            "title": "Passages",
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOut"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "time_limit_sec": {
+            "default": 0,
+            "description": "限时（秒）；0 = 不限时",
+            "title": "Time Limit Sec",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "paper_id",
+          "kind",
+          "ordinal"
+        ],
+        "title": "SectionOut",
         "type": "object"
       },
       "SentenceMergeIn": {
@@ -1474,6 +2006,112 @@
           }
         },
         "title": "SentenceUpdate",
+        "type": "object"
+      },
+      "SessionOut": {
+        "description": "会话视图（作答进度 + 汇总）。",
+        "properties": {
+          "answered": {
+            "default": 0,
+            "description": "已作答条数",
+            "title": "Answered",
+            "type": "integer"
+          },
+          "draft_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Kind"
+          },
+          "graded": {
+            "default": 0,
+            "description": "已判分条数",
+            "title": "Graded",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "max_score": {
+            "default": 0.0,
+            "title": "Max Score",
+            "type": "number"
+          },
+          "paper_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Id"
+          },
+          "pending": {
+            "default": 0,
+            "description": "尚未判分条数（>0 时前端应轮询）",
+            "title": "Pending",
+            "type": "integer"
+          },
+          "responses": {
+            "items": {
+              "$ref": "#/components/schemas/ResponseOut"
+            },
+            "title": "Responses",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "description": "in_progress | grading | graded | degraded",
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "time_spent_sec": {
+            "default": 0,
+            "title": "Time Spent Sec",
+            "type": "integer"
+          },
+          "total_score": {
+            "default": 0.0,
+            "title": "Total Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "SessionOut",
         "type": "object"
       },
       "StatsOut": {
@@ -3077,6 +3715,114 @@
         ]
       }
     },
+    "/api/papers": {
+      "get": {
+        "description": "试卷列表（新的在前）。\n\nNotes:\n    计数（`section_count` / `question_count`）由两个聚合子查询一次算完，\n    **不会**为每张卷子再查一次（N+1 是这类列表接口最常见的性能坑）。",
+        "operationId": "list_papers_api_papers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Papers",
+        "tags": [
+          "papers"
+        ]
+      }
+    },
+    "/api/papers/{paper_id}": {
+      "get": {
+        "description": "试卷结构（无答案）。\n\nRaises:\n    HTTPException: 404 —— 试卷不存在。",
+        "operationId": "get_paper_api_papers__paper_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Paper",
+        "tags": [
+          "papers"
+        ]
+      }
+    },
+    "/api/papers/{paper_id}/sessions": {
+      "post": {
+        "description": "开始一次作答（`status='in_progress'`）。\n\nRaises:\n    HTTPException: 404 —— 试卷不存在。",
+        "operationId": "create_session_api_papers__paper_id__sessions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session",
+        "tags": [
+          "papers"
+        ]
+      }
+    },
     "/api/question-types": {
       "get": {
         "description": "下发全部已注册题型（code / label / grade_mode / requires_external）。\n\nReturns:\n    `{\"types\": [...]}`，按 `code` 升序；注册表为空时返回 `{\"types\": []}`。\n\nNotes:\n    端点以 **GET `/api/question-types`** 暴露（与现有 34 个端点同一风格：\n    复数资源名 + 无尾部斜杠）。它受 `main.py` 的全局登录门禁保护 ——\n    清单里不含任何题目内容，但仍然不该给未登录者看站点结构。",
@@ -3353,6 +4099,145 @@
         "summary": "Split Sentence",
         "tags": [
           "sentences"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/report": {
+      "get": {
+        "description": "成绩报告（`pending > 0` 时说明还有题在等判分，不是错误）。\n\nRaises:\n    HTTPException: 404 会话不存在；**409 尚未交卷**（报告是交卷后的成绩单）。",
+        "operationId": "get_report_api_sessions__session_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Report",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/responses": {
+      "patch": {
+        "description": "暂存/更新作答（批量 upsert：同一题重复提交是覆盖，不是新增）。\n\nRaises:\n    HTTPException: 404 会话不存在；409 已交卷；400 题号不属于本试卷。",
+        "operationId": "patch_responses_api_sessions__session_id__responses_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Responses",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/submit": {
+      "post": {
+        "description": "交卷判分。\n\nNotes:\n    * **幂等**：重复提交不重新判分；只会为「已交卷但还没入队」的异步题补入队。\n    * 返回值里 `status='grading'` + `pending>0` 意味着写作批改还在 worker 里跑，\n      前端应轮询 `GET /api/sessions/{id}/report`（**交卷请求绝不阻塞**）。\n    * 请求线程**绝不**调用外部批改服务：async 题只入队。\n\nRaises:\n    HTTPException: 404 会话不存在；409 还没有作答。",
+        "operationId": "submit_session_api_sessions__session_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Session",
+        "tags": [
+          "sessions"
         ]
       }
     },

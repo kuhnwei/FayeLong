@@ -46,7 +46,7 @@ from alembic.config import Config
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.orm import Session
 
-from app import models  # 注册 9 张表到 Base.metadata，并供 ORM 冒烟用例构造实体
+from app import models  # 把全部表注册到 Base.metadata，并供 ORM 冒烟用例构造实体
 from app.db import Base
 
 #: 用于把模型侧 `server_default`（如 `func.now()`）编译成 SQLite 方言的文本，
@@ -62,9 +62,10 @@ _MIGRATIONS_DIR: Path = _BACKEND_DIR / "migrations"
 _REAL_DATA_DIR: Path = (_BACKEND_DIR.parent / "data").resolve()
 _REAL_DB_PATH: Path = _REAL_DATA_DIR / "app.db"
 
-#: 当前 head（P3-1 的基线 `0001` + P3-2 的 `0002_jobs_and_workers.py`）。
+#: 当前 head（P3-1 的基线 `0001` + P3-2 的 `0002_jobs_and_workers.py`
+#: + P4-3 的 `0003_ielts.py`）。
 #: 语义从「基线」变成「当前 head」—— 保留 `0001` 的断言会阻止任何新迁移。
-_HEAD_REVISION = "0002"
+_HEAD_REVISION = "0003"
 
 #: 基线 `0001` 负责的 9 张业务表（与 `models/entities.py` 硬对齐，手工列出，
 #: 避免「metadata 少了某张表 → 期望值也跟着少」这种自我循环的假通过）。
@@ -89,8 +90,25 @@ _LEGACY_TABLES = frozenset(
 #: 因此只能断言「升级后存在 + 列集合与模型一致」，不能整表比对 PRAGMA（会假红）。
 _NEW_TABLES = frozenset({"jobs", "workers"})
 
+#: `0003_ielts.py` 新增的 7 张表（P4-3 题库与作答 + P4-4 批改缓存）。
+#: 口径与 `_NEW_TABLES` 相同：老库升级前不存在，只断言「升级后存在 + 列集合一致」。
+_IELTS_TABLES = frozenset(
+    {
+        "papers",
+        "sections",
+        "passages",
+        "questions",
+        "practice_sessions",
+        "responses",
+        "writing_grade_cache",
+    }
+)
+
+#: 「老库升级前不存在」的全部表（P3-2 + P4-3）。上面两条规则合并后的口径。
+_ADDED_TABLES = _NEW_TABLES | _IELTS_TABLES
+
 #: 当前 head 应当建出的全部业务表。
-_EXPECTED_TABLES = _LEGACY_TABLES | _NEW_TABLES
+_EXPECTED_TABLES = _LEGACY_TABLES | _ADDED_TABLES
 
 #: 基线**刻意**在 DDL 里补、而模型侧没有 `server_default` 的默认值。
 #: 见 `0001_baseline.py` 的「关于默认值」段：模型只有 Python 端 `default=""`，
@@ -414,7 +432,7 @@ def _table_info(
 
 
 # ---------------------------------------------------------------------------
-# 1) 空库 → upgrade head：9 张表 + alembic_version 全部就位，列集合与模型一致
+# 1) 空库 → upgrade head：全部业务表 + alembic_version 就位，列集合与模型一致
 # ---------------------------------------------------------------------------
 def test_fresh_database_creates_baseline_schema(tmp_path: Path) -> None:
     """全新的空库执行 ``upgrade head`` 后，表与列都应与模型严格一致。"""
@@ -426,7 +444,7 @@ def test_fresh_database_creates_baseline_schema(tmp_path: Path) -> None:
     tables = _table_names(fresh_db)
     assert tables == _EXPECTED_TABLES | {"alembic_version"}, f"表集合不符：{tables}"
 
-    # 模型侧也必须有且仅有这 9 张表（防止有人删模型而基线仍「自洽」）。
+    # 模型侧也必须有且仅有 `_EXPECTED_TABLES`（防止有人删模型而基线仍「自洽」）。
     assert frozenset(Base.metadata.tables) == _EXPECTED_TABLES, sorted(Base.metadata.tables)
 
     for table_name in sorted(_EXPECTED_TABLES):
@@ -624,14 +642,14 @@ def test_fresh_schema_matches_models_exactly(tmp_path: Path) -> None:
         )
         total_indexes += len(expected_indexes)
 
-    # 防止「空比对」式假通过：数量级必须对得上（11 表 / 84 列 / 13 索引）。
-    # 84 = 4+15+10+6+4+10+2+7+5（categories/media/sentences/attempts/notes/
-    #      vocab/settings/users/translations，合计 63）
-    #      + 14（jobs）+ 7（workers）
-    assert total_columns == 84, f"列总数异常：{total_columns}"
-    # 13 = 8（0001 的索引）+ 4（jobs）+ 1（workers）
-    assert total_indexes == 13, f"索引总数异常：{total_indexes}"
-    assert len(_EXPECTED_TABLES) == 11
+    # 防止「空比对」式假通过：数量级必须对得上（18 表 / 131 列 / 20 索引）。
+    # 131 = 84（P3-2 时的总量：63 张老表 + 14 jobs + 7 workers）
+    #       + 47（P4-3：papers 6 / sections 7 / passages 5 / questions 10 /
+    #              practice_sessions 7 / responses 8 / writing_grade_cache 4）
+    assert total_columns == 131, f"列总数异常：{total_columns}"
+    # 20 = 13（P3-2 时的 8 + 4 + 1）+ 7（P4-3 的 7 个外键列索引）
+    assert total_indexes == 20, f"索引总数异常：{total_indexes}"
+    assert len(_EXPECTED_TABLES) == 18
 
 
 # ---------------------------------------------------------------------------
@@ -661,7 +679,10 @@ def test_real_database_copy_upgrade_keeps_everything(tmp_path: Path) -> None:
     # 真实库此时还没有 alembic_version，也还没有 jobs/workers。
     before_info = _table_info(copy_db, tables=_LEGACY_TABLES)
     assert "alembic_version" not in _table_names(copy_db)
-    assert not (_NEW_TABLES & _table_names(copy_db)), sorted(_NEW_TABLES & _table_names(copy_db))
+    # 真实库此时既没有 jobs/workers，也没有 P4-3 的 7 张表。
+    assert not (_ADDED_TABLES & _table_names(copy_db)), sorted(
+        _ADDED_TABLES & _table_names(copy_db)
+    )
 
     _upgrade(copy_db)
 
@@ -674,17 +695,17 @@ def test_real_database_copy_upgrade_keeps_everything(tmp_path: Path) -> None:
         t: before_info[t] for t in _LEGACY_TABLES
     }, "老库结构被改动（基线对已有表必须 no-op）"
 
-    # 新表必须出现，且列集合与模型一致。
+    # 新表必须出现，且列集合与模型一致（P3-2 的 2 张 + P4-3 的 7 张一起验）。
     tables = _table_names(copy_db)
-    assert _NEW_TABLES <= tables, f"新表缺失：{sorted(_NEW_TABLES - tables)}"
-    for table_name in sorted(_NEW_TABLES):
+    assert _ADDED_TABLES <= tables, f"新表缺失：{sorted(_ADDED_TABLES - tables)}"
+    for table_name in sorted(_ADDED_TABLES):
         actual = {column[0] for column in _actual_columns(copy_db, table_name)}
         expected = {column.name for column in Base.metadata.tables[table_name].columns}
         assert actual == expected, f"{table_name} 列集合不符：多 {actual - expected}，缺 {expected - actual}"
 
     # 真实库本身一行未变（只读校验：它仍然没有 alembic_version / jobs 表）。
     assert "alembic_version" not in _table_names(_REAL_DB_PATH)
-    assert not (_NEW_TABLES & _table_names(_REAL_DB_PATH))
+    assert not (_ADDED_TABLES & _table_names(_REAL_DB_PATH))
     assert _table_info(_REAL_DB_PATH, readonly=True, tables=_LEGACY_TABLES) == before_info
 
 
@@ -692,7 +713,7 @@ def test_real_database_copy_upgrade_keeps_everything(tmp_path: Path) -> None:
 # 7) downgrade base：可逆（仅本地/CI 演练用途）
 # ---------------------------------------------------------------------------
 def test_downgrade_base_removes_every_table(tmp_path: Path) -> None:
-    """``downgrade base`` 应删掉 9 张业务表（只留 alembic 自己的版本表）。"""
+    """``downgrade base`` 应删掉全部业务表（只留 alembic 自己的版本表）。"""
     db_path = tmp_path / "downgrade.db"
     _upgrade(db_path)
     assert _EXPECTED_TABLES <= _table_names(db_path)
@@ -747,8 +768,12 @@ def test_fresh_schema_server_defaults_match_models(tmp_path: Path) -> None:
 
     # 6 张老表的 created_at + notes.updated_at = 7 个由模型声明的 server_default；
     # 再加 jobs 的 6 个（status/progress/priority/payload/attempts/created_at）
-    # 与 workers 的 5 个（host/mode/pools/started_at/heartbeat_at）= 18。
-    assert checked == 18, f"declared server_default 数量异常：{checked}"
+    # 与 workers 的 5 个（host/mode/pools/started_at/heartbeat_at）= 18；
+    # 再加 P4-3 的 3 个（papers.created_at / practice_sessions.started_at /
+    # writing_grade_cache.created_at）= 21。
+    # ⚠️ 这个数字是**故意**写成字面量的：它同时兜住「有人给新列随手加了
+    #    server_default 却没在迁移里写」与「迁移写了但模型没声明」两侧。
+    assert checked == 21, f"declared server_default 数量异常：{checked}"
 
     # 白名单项（基线刻意补的 DDL 默认值）必须真的存在，且值不变。
     assert _actual_server_defaults(db_path, "sentences")["marks"] == "''"
@@ -771,8 +796,13 @@ def test_fresh_schema_foreign_keys_match_models(tmp_path: Path) -> None:
         )
         total += len(expected)
 
-    # media→categories、sentences→media、attempts→sentences、notes→sentences
-    assert total == 4, f"外键总数异常：{total}（vocab 刻意不加外键）"
+    # 老库：media→categories、sentences→media、attempts→sentences、notes→sentences = 4
+    # P4-3：sections→papers、passages→sections、questions→sections、
+    #       questions→passages、practice_sessions→papers、
+    #       responses→practice_sessions、responses→questions = 7
+    # 合计 11。**刻意不加外键**的两处（sections.media_id / questions.ref_sentence_id）
+    # 也不在这个总数里 —— 它们必须保持「裸整数」，理由见 0003 迁移的 docstring。
+    assert total == 11, f"外键总数异常：{total}（vocab / IELTS 对外引用刻意不加外键）"
 
     # 语义点名：删分类后素材必须回落「未分类」（SET NULL），绝不是级联删除。
     assert (
@@ -790,7 +820,7 @@ def test_fresh_schema_foreign_keys_match_models(tmp_path: Path) -> None:
 # 10) 行为冒烟：迁移后的库必须能被 ORM 真实写入（server_default 的终局验证）
 # ---------------------------------------------------------------------------
 def test_migrated_schema_accepts_orm_inserts(tmp_path: Path) -> None:
-    """空库迁移后，9 张表各插一行必须成功 —— 最贴近故障现场的证据。
+    """空库迁移后，**每张业务表**各插一行必须成功 —— 最贴近故障现场的证据。
 
     缺 ``DEFAULT CURRENT_TIMESTAMP`` 时，结构比对照样全绿，直到线上第一次
     ``INSERT INTO categories`` 才炸 ``NOT NULL constraint failed``。这里用真实
@@ -830,6 +860,43 @@ def test_migrated_schema_accepts_orm_inserts(tmp_path: Path) -> None:
             session.add(models.Job(kind="media_transcode", ref_id=media.id))
             session.add(models.Worker(id="w" * 32, pid=4321))
 
+            # P4-3 新增的 7 张表：同样**只给业务列**，把 created_at / started_at
+            # 交给库填 —— 迁移里漏掉 DEFAULT 的话这里就是 IntegrityError。
+            paper = models.Paper(title="C4 Test 1", mode="full_mock", source="Cambridge", tags=["听力"])
+            session.add(paper)
+            session.flush()
+            section = models.Section(
+                paper_id=paper.id, kind="listening", ordinal=0, time_limit_sec=1800,
+                instructions="听录音答题", media_id=media.id,
+            )
+            session.add(section)
+            session.flush()
+            passage = models.Passage(section_id=section.id, ordinal=0, title="Passage 1", body_md="# hi")
+            session.add(passage)
+            session.flush()
+            question = models.Question(
+                section_id=section.id, passage_id=passage.id, ordinal=0, type="dictation",
+                stem="写下你听到的句子", options=[], answer={"expected_text": "Hi."},
+                explanation="原文见句库", ref_sentence_id=sentence.id,
+            )
+            session.add(question)
+            session.flush()
+            practice = models.PracticeSession(paper_id=paper.id, status="in_progress", time_spent_sec=0)
+            session.add(practice)
+            session.flush()
+            session.add(
+                models.Response(
+                    session_id=practice.id, question_id=question.id,
+                    user_answer={"text": "hi"}, detail={},
+                )
+            )
+            session.add(
+                models.WritingGradeCache(
+                    content_hash="f" * 40, question_id=question.id,
+                    payload={"score": 6.5, "max_score": 9.0, "correct": False, "detail": {}},
+                )
+            )
+
             # 任一 NOT NULL 列缺 server_default 且 ORM 未赋值 → 这里 IntegrityError。
             session.commit()
 
@@ -838,6 +905,9 @@ def test_migrated_schema_accepts_orm_inserts(tmp_path: Path) -> None:
                 "SELECT created_at FROM categories",
                 "SELECT updated_at FROM notes",
                 "SELECT created_at FROM translations",
+                "SELECT created_at FROM papers",
+                "SELECT started_at FROM practice_sessions",
+                "SELECT created_at FROM writing_grade_cache",
             ):
                 assert session.execute(sa.text(statement)).scalar() is not None, statement
     finally:

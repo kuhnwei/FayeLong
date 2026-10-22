@@ -24,8 +24,10 @@ from app.api import (
     health,
     media,
     notes,
+    papers,
     question_types as question_types_api,
     sentences,
+    sessions,
     stats,
     vocab,
 )
@@ -233,6 +235,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(health.router)
 app.include_router(auth_api.router)
 app.include_router(question_types_api.router)
+app.include_router(papers.router)
+app.include_router(sessions.router)
 app.include_router(media.router)
 app.include_router(categories.router)
 app.include_router(sentences.router)

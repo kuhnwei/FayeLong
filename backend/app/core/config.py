@@ -167,6 +167,28 @@ class Settings(BaseSettings):
     #   on   = 整体退回「单进程全干」的旧行为（回滚开关）
     web_inproc_worker: str = "auto"
 
+    # ---------------- P4-4 写作批改（外部服务，**默认关闭**）----------------
+    #: 批改来源：off | openai_compat。
+    #:   off           = **默认值**：零付费、离线可用。写作题交卷后仍会判分，
+    #:                   但结果走「参考范文 + 评分标准 + 自评清单」的降级路径
+    #:                   （status='degraded'），**绝不阻塞交卷**。
+    #:   openai_compat = 任何兼容 OpenAI `/chat/completions` 的服务（官方/自建/代理）。
+    #: ⚠️ 这是全站**唯一**可能产生费用的开关，默认必须是 off（ADR-001 §6 Q6）。
+    grading_provider: str = "off"
+    #: `openai_compat` 的基址（不含 `/chat/completions`）。
+    grading_base_url: str = "https://api.openai.com/v1"
+    #: API Key。**只从环境变量来**（`FAYELONG_GRADING_API_KEY`），
+    #: 不写 `data/`、不写数据库、不进日志（日志一律走 provider.mask_secret）。
+    grading_api_key: str = ""
+    grading_model: str = "gpt-4o-mini"
+    #: 单次外部调用超时（秒）。超时即降级，不重试 —— 重试会把「慢」放大成「卡死」。
+    grading_timeout_sec: float = 30.0
+    #: 单次生成上限（token），防止一次批改吃掉整月预算。
+    grading_max_tokens: int = 900
+    #: 每日外部调用上限（按 UTC 日计）。超出直接走降级并写明原因。
+    #: 个人自用规模下的硬闸：**宁可少批几篇，也不让账单失控**。
+    grading_daily_max: int = 200
+
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

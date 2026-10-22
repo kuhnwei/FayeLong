@@ -31,6 +31,7 @@ from app.services.question_types import (
     unregister,
 )
 from app.services.question_types import dictation as dictation_type_module
+from app.services.question_types import writing as writing_type_module
 from app.services.question_types.dictation import DictationQuestionType
 from app.services.question_types.echo import EchoQuestionType, register_echo
 
@@ -40,6 +41,13 @@ EXPECTED_DICTATION = {
     "label": "听写",
     "grade_mode": "sync",
     "requires_external": False,
+}
+#: P4-4 起注册的第二个生产题型（默认 `grading_provider=off` 时判分走降级包）。
+EXPECTED_WRITING = {
+    "code": "writing",
+    "label": "写作",
+    "grade_mode": "async",
+    "requires_external": True,
 }
 
 
@@ -80,14 +88,24 @@ def authed_client(client):
 
 
 class TestRegistry:
-    def test_dictation_registered_by_import_alone(self) -> None:
-        """只 import 包就该拿到完整注册表 —— 这是「新增题型不改核心」的前提。"""
-        assert registered_codes() == ("dictation",)
+    def test_production_types_registered_by_import_alone(self) -> None:
+        """只 import 包就该拿到**完整**注册表 —— 这是「新增题型不改核心」的前提。
+
+        ⚠️ P4-4 起注册表有 **2** 个生产题型（`writing` 是第一个 async 题型）。
+        这条断言是**故意**写成精确元组的：注册表多/少一个题型都应当被人看见
+        （多出来 = 有人加了题型却没说，少一个 = import 链断了）。
+        """
+        assert registered_codes() == ("dictation", "writing")
         qtype = get("dictation")
         assert qtype is not None
         assert isinstance(qtype, DictationQuestionType)
         assert qtype.grade_mode == "sync"
         assert qtype.requires_external is False
+
+        writing = get("writing")
+        assert writing is not None, "writing 题型必须随包 import 自动注册"
+        assert writing.grade_mode == "async", "写作必须走异步判分（ADR-001 §7.1）"
+        assert writing.requires_external is True
 
     def test_get_unknown_code_returns_none(self) -> None:
         assert get("reading_mcq") is None
@@ -101,7 +119,9 @@ class TestRegistry:
             assert registered_codes() == ()
             assert get("dictation") is None
         finally:
-            register(dictation_type_module.TYPE)   # 复原（autouse fixture 会复核）
+            # 复原全部生产题型（autouse fixture 会复核 code 集合是否一致）
+            register(dictation_type_module.TYPE)
+            register(writing_type_module.TYPE)
 
         codes = registered_codes()
         assert codes == tuple(sorted(codes))
@@ -350,7 +370,8 @@ class TestQuestionTypesEndpoint:
     def test_returns_registry(self, authed_client) -> None:
         resp = authed_client.get("/api/question-types")
         assert resp.status_code == 200, resp.text
-        assert resp.json() == {"types": [EXPECTED_DICTATION]}
+        # P4-4 起清单是 dictation + writing（按 code 升序）
+        assert resp.json() == {"types": [EXPECTED_DICTATION, EXPECTED_WRITING]}
 
     def test_empty_registry_returns_empty_list(self, authed_client) -> None:
         """注册表为空是合法状态：端点必须返回空数组，而不是 500。"""
@@ -361,6 +382,7 @@ class TestQuestionTypesEndpoint:
             assert resp.json() == {"types": []}
         finally:
             register(dictation_type_module.TYPE)
+            register(writing_type_module.TYPE)
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +403,7 @@ class TestEchoPlaceholder:
         try:
             body = authed_client.get("/api/question-types").json()
             codes = [item["code"] for item in body["types"]]
-            assert codes == ["dictation", "echo"], codes
+            assert codes == ["dictation", "echo", "writing"], codes
             echo_item = body["types"][1]
             assert echo_item == {
                 "code": "echo",
