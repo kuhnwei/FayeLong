@@ -1,0 +1,103 @@
+sequenceDiagram
+    autonumber
+    participant FE as 前端 (Vue)
+    participant API as api/media.py
+    participant MS as services/media.py
+    participant JS as services/jobs.py
+    participant DB as SQLite (media / jobs / workers)
+    participant CPU as worker CPU 池 (核数)
+    participant IO as worker IO 池 (4)
+
+    FE->>API: POST /api/media (multipart 上传)
+    API->>DB: INSERT media (status=pending, progress=0)
+    API->>MS: enqueue(media.id)
+    MS->>JS: enqueue(KIND_TRANSCODE, ref_id=media.id, priority=0)
+    JS->>DB: INSERT OR IGNORE INTO jobs (...) VALUES ('media_transcode', id, 'pending')
+    Note over JS,DB: uq_jobs_active 部分唯一索引<br/>使重复入队变 no-op
+    API-->>FE: 200 MediaOut (status=pending, progress=0)
+    Note over FE,API: 前端此后只靠 SSE / 轮询读 media.progress<br/>契约与今天完全一致 (34 path / 42 op)
+
+    loop 每 500ms，空闲退避到 2000ms
+        CPU->>JS: claim(kinds=[transcode, asr, clip], worker_id=W1)
+        JS->>DB: UPDATE jobs SET status='running', worker_id='W1',<br/>attempts=attempts+1, started_at=COALESCE(...), heartbeat_at=now<br/>WHERE id=(SELECT id FROM jobs WHERE status='pending' AND kind IN (...)<br/>ORDER BY priority DESC, id ASC LIMIT 1) AND status='pending'
+        DB-->>JS: rowcount (1 = 抢到, 0 = 让给别人)
+        JS-->>CPU: Job | None
+    end
+
+    Note over CPU: my_attempt = job.attempts（fencing token）
+
+    rect rgb(238, 245, 255)
+    Note over CPU,DB: stage_transcode（CPU 池，幂等：wav 已存在则跳过）
+    CPU->>JS: job.session() -> db
+    CPU->>DB: media.status=transcoding, progress=_scale(1,(0,20))
+    CPU->>CPU: ffprobe + ffmpeg transcode_to_wav(on_progress)
+    CPU->>JS: _Progress 回调 -> touch(job, my_attempt) + check_alive()
+    JS->>DB: UPDATE media SET progress=? <br/>UPDATE jobs SET heartbeat_at=now WHERE id=? AND worker_id=? AND attempts=?
+    Note over JS,DB: rowcount=0 -> 抛 JobAborted，本 stage 立即放弃<br/>（防「老执行者复活后写坏数据」）
+    CPU->>DB: media.audio_path=?, progress=_scale(100,(0,20))
+    CPU->>JS: finish_ok(job, next_kind=KIND_ASR, ref_id)
+    JS->>DB: BEGIN; jobs -> done; INSERT OR IGNORE (media_asr, ref) pending; COMMIT
+    Note over JS,DB: 一次事务内完成「结案 + 接力」<br/>绝不能两次提交（中间崩溃 = 任务凭空消失）
+    end
+
+    rect rgb(240, 255, 240)
+    Note over CPU,IO: stage_asr（CPU 池，分钟级）
+    CPU->>DB: claim media_asr -> running, attempts+1
+    CPU->>DB: media.status=asr
+    CPU->>CPU: asr_service.transcribe(audio) 逐段回调进度
+    CPU->>DB: 重建 sentences（DELETE + INSERT）, media.progress=_scale(100,(20,70))
+    CPU->>JS: finish_ok(job, next_kind=KIND_TRANSLATE, ref_id)
+    JS->>DB: BEGIN; media_asr -> done; INSERT OR IGNORE (media_translate, ref); COMMIT
+    end
+
+    par 关键：翻译在 IO 池，与 CPU 池物理隔离
+        IO->>JS: claim(kinds=[translate, grade_writing], worker_id=W1)
+        JS->>DB: 同一条原子 UPDATE（只是 kind 集合不同）
+        Note over IO: 此时 CPU 池可能仍在跑别的媒体的 ASR<br/>两边互不占位 —— 这就是 G3-3 的验证对象
+    and
+        CPU->>DB: claim 下一个 media_transcode（另一条素材）
+        CPU->>CPU: ffmpeg 转码
+    end
+
+    rect rgb(255, 248, 235)
+    Note over IO,DB: stage_translate（IO 池，逐句串行 + 150ms 限流 + translations 缓存）
+    IO->>DB: media.status=translating, progress=_scale(0,(70,90))
+    loop 每句
+        IO->>JS: check_alive(job, my_attempt)
+        IO->>IO: translate_service.translate(text_en)（命中 translations 缓存则不请求网络）
+        IO->>DB: row.text_zh=?, media.progress=_scale(n/total*100,(70,90))
+        IO->>IO: sleep_between() 150ms
+    end
+    IO->>JS: finish_ok(job, next_kind=KIND_CLIP, ref_id)
+    JS->>DB: BEGIN; media_translate -> done; INSERT OR IGNORE (media_clip, ref); COMMIT
+    end
+
+    rect rgb(245, 240, 255)
+    Note over CPU,DB: stage_clip（CPU 池）
+    CPU->>DB: claim media_clip -> running
+    CPU->>DB: media.status=clipping
+    CPU->>CPU: clear_clips + 逐句 cut_clip_auto
+    CPU->>DB: row.clip_path=?, media.progress=_scale(...,(90,100))
+    CPU->>DB: BEGIN; media.status=done, progress=100; jobs -> done, finished_at=now; COMMIT
+    Note over CPU,DB: 终态：两轴一起收敛（jobs.done + media.done 同事务）
+    end
+
+    FE->>API: GET /api/media/{id}/status (SSE) 或列表轮询
+    API-->>FE: status=done, progress=100
+
+    rect rgb(255, 240, 240)
+    Note over CPU,DB: 崩溃恢复（G3-2）：worker 被 kill -9 后
+    CPU--xDB: 进程消失 -> workers 行心跳停更，jobs 行停在 running
+    Note over CPU,DB: 重启后的新 worker：<br/>1) 清 >10min 的 workers 死行<br/>2) recover_stale()
+    JS->>DB: UPDATE jobs SET status='pending', worker_id=NULL<br/>WHERE status='running'<br/>AND (heartbeat_at < now-120s OR worker_id NOT IN (在线集合))<br/>AND attempts < 3
+    JS->>DB: UPDATE jobs SET status='failed', finished_at=now<br/>WHERE status='running' AND attempts >= 3
+    Note over JS,DB: 回收带 worker_id + heartbeat_at 的 CAS 条件，<br/>避免「刚续完租约就被重置」<br/>原执行者若还活着，下一次写回 rowcount=0 -> 自杀
+    end
+
+    rect rgb(255, 250, 230)
+    Note over API,DB: 另一条轴（保留不改）：main.py lifespan 的 media 轴兜底
+    API->>MS: requeue_unfinished()
+    MS->>DB: UPDATE media SET status=pending, progress=0 WHERE status IN UNFINISHED_STATUSES
+    MS->>JS: enqueue(KIND_TRANSCODE, media.id) 每个一条
+    Note over MS,DB: 它修的是「有 media 无 job」的老库遗留（本阶段升级前的内存任务）<br/>与 jobs 恢复不重叠；重复入队被 uq_jobs_active 吸收
+    end

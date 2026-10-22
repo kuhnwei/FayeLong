@@ -1,0 +1,204 @@
+classDiagram
+    %% =====================================================================
+    %% P3-2 / P3-3 类图：jobs 表 + 独立 worker + CPU/IO 分池
+    %% 约定：
+    %%   - 数据模型（Job / Worker / Media）由 SQLAlchemy 映射到 SQLite
+    %%   - JobsService 全部方法都是**函数式**的（显式传 session），不是有状态对象
+    %%   - Worker 是唯一的执行者；PoolRunner 每个池一个
+    %% =====================================================================
+
+    class Job {
+        +int id
+        +str kind
+        +int ref_id
+        +str status
+        +int progress
+        +str error
+        +int priority
+        +str payload
+        +int attempts
+        +str worker_id
+        +datetime heartbeat_at
+        +datetime created_at
+        +datetime started_at
+        +datetime finished_at
+    }
+
+    class Worker {
+        +str id
+        +int pid
+        +str host
+        +str mode
+        +str pools
+        +datetime started_at
+        +datetime heartbeat_at
+    }
+
+    class Media {
+        +int id
+        +str status
+        +int progress
+        +str error
+        +str audio_path
+        +int duration_ms
+    }
+
+    class JobsService {
+        <<module>>
+        +POOL_CPU = "cpu"
+        +POOL_IO = "io"
+        +KIND_TRANSCODE = "media_transcode"
+        +KIND_ASR = "media_asr"
+        +KIND_TRANSLATE = "media_translate"
+        +KIND_CLIP = "media_clip"
+        +KIND_GRADE_WRITING = "grade_writing"
+        +dict KIND_POOL
+        +dict NEXT_STAGE
+        +enqueue(kind, ref_id, payload, priority) int
+        +claim(db, kinds, worker_id) Job
+        +touch(db, job, my_attempt) bool
+        +check_alive(db, job_id, worker_id, my_attempt) bool
+        +finish_ok(db, job, next_kind, ref_id, payload) None
+        +finish_failed(db, job, message, max_attempts) str
+        +recover_stale(db, now) int
+        +renew_lease(db, worker_id) int
+        +purge_for_media(db, media_id) int
+        +counts_by_status(db) dict
+        +register_worker(db, worker_id, pid, mode, pools) None
+        +heartbeat_worker(db, worker_id) None
+        +unregister_worker(db, worker_id) None
+        +online_workers(db) list
+    }
+
+    class WorkerProcess {
+        +str instance_id
+        +str mode
+        +int cpu_threads
+        +int io_threads
+        +dict HANDLERS
+        +Thread heartbeat_thread
+        +Thread lease_ticker
+        +PoolRunner cpu_pool
+        +PoolRunner io_pool
+        +start() None
+        +stop() None
+        +wait_idle(timeout) bool
+        +_heartbeat_loop() None
+        +_lease_loop() None
+        +_recover_once() int
+    }
+
+    class PoolRunner {
+        +str pool_name
+        +list kinds
+        +int size
+        +ThreadPoolExecutor executor
+        +Semaphore slots
+        +run() None
+        +_claim_one() Job
+        +_execute(job, my_attempt) None
+    }
+
+    class JobCtx {
+        +int job_id
+        +str kind
+        +int ref_id
+        +str worker_id
+        +int my_attempt
+        +session() Session
+        +touch() None
+        +check_alive() None
+        +finish_ok(next_kind) None
+        +finish_failed(message) None
+    }
+
+    class JobAborted {
+        <<exception>>
+        放弃执行：租约已失效或任务已被回收
+    }
+
+    class MediaStages {
+        <<module  app.services.media>>
+        +stage_transcode(media_id, ctx) None
+        +stage_asr(media_id, ctx) None
+        +stage_translate(media_id, ctx) None
+        +stage_clip(media_id, ctx) None
+        +process_media(media_id) None
+        +retranscribe_media(media_id) None
+        +enqueue(media_id) None
+        +enqueue_retranscribe(media_id) None
+        +requeue_unfinished() int
+        +_ensure_audio(db, media) Path
+        +_persist_sentences(db, media_id, sentences) list
+        +_set_stage(db, media, status, progress) None
+        +_mark_failed(media_id, message, job) None
+    }
+
+    class ProgressReporter {
+        +Session db
+        +Media media
+        +tuple span
+        +JobCtx ctx
+        +int last
+        +__call__(percent) None
+    }
+
+    class Settings {
+        +int job_cpu_threads
+        +int job_io_threads
+        +int job_poll_interval_ms
+        +int job_idle_max_ms
+        +int job_heartbeat_interval_sec
+        +int job_worker_ttl_sec
+        +int job_lease_interval_sec
+        +int job_lease_ttl_sec
+        +int job_max_attempts
+        +str web_inproc_worker
+        +int worker_threads
+    }
+
+    class AppLifespan {
+        <<app.main.lifespan>>
+        +ensure_dirs() None
+        +setup_logging(filename) None
+        +init_db() None
+        +requeue_unfinished() int
+        +maybe_start_inproc_worker() None
+        +stop_inproc_worker() None
+        +shutdown_tasks() None
+    }
+
+    class HealthApi {
+        +GET_api_health() dict
+        +worker_block() dict
+        +jobs_block() dict
+    }
+
+    %% ---------------- 关系 ----------------
+    WorkerProcess "1" *-- "1" PoolRunner : cpu_pool
+    WorkerProcess "1" *-- "1" PoolRunner : io_pool
+    WorkerProcess "1" o-- "1" Worker : 注册心跳行 (workers)
+    WorkerProcess ..> JobsService : 调 claim / touch / finish / recover
+    PoolRunner ..> JobsService : claim(kinds)
+    PoolRunner ..> JobCtx : 构造后交给 handler
+    JobCtx ..> JobsService : touch / check_alive / finish
+    JobCtx ..> JobAborted : 租约失效时抛出
+    WorkerProcess ..> MediaStages : HANDLERS 映射到 stage_*
+
+    MediaStages ..> JobsService : enqueue / finish_ok 接力
+    MediaStages ..> ProgressReporter : 构造 (含 JobCtx)
+    ProgressReporter ..> JobCtx : 每次回调 touch + check_alive
+    MediaStages ..> Media : 写 status / progress / error
+    JobsService ..> Job : 唯一读写入口（禁止别处直接 INSERT）
+    JobsService ..> Worker : 心跳 / 在线集合
+
+    AppLifespan ..> MediaStages : requeue_unfinished()
+    AppLifespan ..> WorkerProcess : maybe_start_inproc_worker (仅 auto/on)
+    HealthApi ..> JobsService : counts_by_status / online_workers
+
+    %% ---------------- 备注 ----------------
+    note for Job "jobs.status ∈ {pending,running,done,failed}\n无 cancelled：取消 = 删行\nattempts 兼作 fencing token\nprogress 是【阶段内】0-100，全局进度在 media.progress"
+    note for Worker "workers.id = uuid4().hex（不用 host:pid，pid 会复用）\n心跳 10s / TTL 30s\n在线判定：heartbeat_at 晚于 now-30s"
+    note for JobsService "uq_jobs_active(kind, ref_id) WHERE status IN ('pending','running')\n让 enqueue 天然幂等\n所有写回都带 WHERE worker_id=? AND attempts=?"
+    note for Media "media.status 取值与语义【一个字都不许改】\n前端 PROCESSING_STATUSES / STATUS_LABEL 依赖它"
+    note for PoolRunner "cpu 池：media_transcode / media_asr / media_clip\nio 池：media_translate / grade_writing\n未知 kind 保守落 cpu"
