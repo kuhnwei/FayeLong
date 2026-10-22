@@ -843,3 +843,77 @@ class TestIdleKindFilter:
             assert elapsed < 1.5, f"CPU-only worker 空等了 {elapsed:.2f}s（A3 未修复）"
         finally:
             worker.stop()
+
+
+
+# ---------------------------------------------------------------------------
+# Python 版本兼容：Thread 内部方法不得被实例属性覆盖
+# ---------------------------------------------------------------------------
+
+
+class TestThreadInternalNameShadowing:
+    """`_PoolRunner` 继承 `threading.Thread`，**不得**用 Thread 的内部**方法名**做实例属性。
+
+    背景（2026-10-22 云端切换实测，典型「本地全绿、生产必崩」）：
+        `_PoolRunner` 曾把停止信号命名为 `self._stop = Event()`。CPython ≤3.12 的
+        `Thread._wait_for_tstate_lock()` 在 join 收尾时会 `self._stop()`，
+        被 Event 覆盖后抛 `TypeError: 'Event' object is not callable`。
+        Python 3.13 移除了那条内部调用 —— 本地 3.13 的 377 条测试全绿，
+        云端 Python 3.12 的 worker 一 stop 就崩（systemd 里表现为直接退出）。
+
+    为什么是结构性断言：
+        在 3.13 上跑不出行为差异，所以断言对象是「实例 `__dict__` 不许出现内部方法名」。
+        ⚠️ 集合里**只放方法名**：像 `_is_stopped` / `_tstate_lock` / `_initialized`
+        这类是 `Thread.__init__` 自己写进实例的**属性**，出现在 `__dict__` 里是正常的，
+        把它们算进「违规」会误伤。
+
+    为什么必须 `start()` 之后再扫：
+        `_runners` 在 `start()` 之前是空列表。第一版用例直接遍历它，
+        **在空集合上恒真**（等于没断言），这类「无牙守卫」比没有守卫更危险。
+    """
+
+    #: 只列 `Thread` 的**方法名**（CPython 3.9–3.13 并集），覆盖即可能被内部调用到。
+    #: ⚠️ 不含 `_invoke_excepthook`：`Thread.__init__` 会把 `_make_invoke_excepthook()`
+    #:    的结果写进实例，属正常属性（实测踩过，误报一次）。
+    _RESERVED_METHODS = frozenset({
+        "_stop",
+        "_bootstrap",
+        "_bootstrap_inner",
+        "_wait_for_tstate_lock",
+        "_delete",
+        "_reset_internal_locks",
+    })
+
+    def _assert_no_shadow(self, thread: threading.Thread) -> None:
+        clash = self._RESERVED_METHODS & set(thread.__dict__)
+        assert not clash, (
+            f"{type(thread).__name__} 用实例属性覆盖了 threading.Thread 的内部方法名 "
+            f"{sorted(clash)}：Python ≤3.12 的 join() 会调用 Thread._stop()，"
+            f"覆盖后抛 TypeError: 'Event' object is not callable。请改名为 _stop_event 之类。"
+        )
+
+    def test_pool_runner_does_not_shadow_thread_methods(self) -> None:
+        """直接构造 `_PoolRunner`（不依赖 start），断言其 `__dict__` 干净。"""
+        worker = Worker(cpu_threads=1, io_threads=1, mode="external", recover=False)
+        runner = _PoolRunner(worker, POOL_CPU, 1)
+        try:
+            self._assert_no_shadow(runner)
+            # 反向自检：守卫真的在读一个非空 dict（防「空对象上恒真」）
+            assert runner.__dict__, "_PoolRunner.__dict__ 为空，守卫失效"
+            assert "_stop_event" in runner.__dict__, "停止信号应命名为 _stop_event"
+        finally:
+            runner.executor.shutdown(wait=False)
+
+    def test_started_worker_threads_do_not_shadow_thread_methods(self) -> None:
+        """`start()` 之后扫**真实运行的**线程：runners + 维护线程都不许覆盖内部方法名。"""
+        worker = Worker(cpu_threads=1, io_threads=1, mode="external", recover=False)
+        try:
+            worker.start()
+            threads: list[threading.Thread] = list(worker._runners)
+            if worker._maintenance is not None:
+                threads.append(worker._maintenance)
+            assert len(threads) >= 2, f"start() 后应至少有 runner + 维护线程，实际 {len(threads)}"
+            for thread in threads:
+                self._assert_no_shadow(thread)
+        finally:
+            worker.stop()

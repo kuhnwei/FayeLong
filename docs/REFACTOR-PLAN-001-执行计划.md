@@ -440,9 +440,19 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 - [x] **产物是 Vue 的硬证据**：`static/` 与 `frontend-vue/dist` 逐文件 md5 **8/8 全等**；bundle 里 `__VUE__`/`__VUE_INSTANCE_SETTERS__` 命中、`react.production`/`createRoot` 为 0（对照 React 包相反）；**旧 React bundle `/assets/index-C3yyAqNT.js` → 404**
   - 🔴 **不能用 `id="app"` 判**：两套 `index.html` **都是 `id="root"`**（Vue 的 `main.ts` 就是 `.mount('#root')`）。我上一轮把它写进验收判据，是个必然为假的断言
 - [x] 起打包版实测：`/` 只引用 Vue bundle、`worker.mode=="external"`、2 进程、停止后 0 残留（worker 由 `--parent-pid` 看门狗自行退出）、`launcher.py --check` 全绿、包内无 `frontend-vue/` 源码
-- [ ] 云端发布（tar 只含 `backend/app` + 新前端产物，排除 `__pycache__`/`.pyc`）→ scp → 备份 → `systemctl stop fayelong` → 清旧 assets → 解包 → `chown` → 启 → 验证 → **待用户确认**
-- [ ] ⚠️ `data/` 全程只读不覆盖
-- [ ] 首次启用需在 systemd unit 里注入写作批改的 `FAYELONG_*` 密钥（若启用）
+- [x] 云端发布（tar 只含 `backend/app` + 新前端产物，排除 `__pycache__`/`.pyc`）→ scp → 备份 → `systemctl stop fayelong` → 清旧 assets → 解包 → `chown` → 启 → 验证 → **2026-10-22 15:07 完成**
+  - **备份先行**：`data/backups/app-before-p5-20261022-145317.db`（integrity ok、8 表、行数 1/114/1/174）；代码备份在 `/opt/fayelong/.backup/backend|dist-20261022-145723`
+  - **云端不走 alembic**：云端库**没有 `alembic_version` 表**且只有 8 张表（连 `categories` 都没有）、venv 也没装 alembic → 走 `init_db()` 的 `create_all` + `_ensure_columns` 自愈（这正是 P3-1/P3-6 的既定结论）。实测启动后 **18 张表齐**、8 张旧表行数逐项不变
+  - **安装 worker unit**（必须在 `update.sh` 之前，否则它的 `systemctl stop/start fayelong-worker` 找不到 unit）
+  - 用现成的 `deploy/linux/update.sh` 执行（停服务 → 原子替换 → 同步依赖 → 起双进程）
+  - **公网验收**：`/` 引用 `index-DhytbGUL.js`；**公网 bundle md5 `5c070ec1…` 与本地逐字节一致**（G5-① 的「线上跑的就是本地验过的那份」）；旧 React bundle → **404**；`worker.mode=external`、`cpu=1 io=4`、磁盘余量 67%
+  - **调度端到端冒烟**（不碰媒体数据）：插一条未知 kind 的 job → worker 认领（`worker_id` 非空）→ 判 `failed`（「没有为 kind 注册 handler」）→ 说明 claim/执行/写回/fencing 在 3.12 上真正跑通；冒烟行已删除
+- 🔴 **云端暴露的致命兼容缺陷（本地 3.13 全绿也发现不了）**：`_PoolRunner` 把停止信号命名为 `self._stop = Event()`，与 `threading.Thread._stop()` **同名**。CPython ≤3.12 的 `Thread._wait_for_tstate_lock()` 在 join 收尾会调 `self._stop()` → `TypeError: 'Event' object is not callable`，**worker 一 stop 就崩**；3.13 移除了那条内部调用 → 本地 376 条测试全绿。修法：改名 `_stop_event`，并加**结构性守卫用例**（实例 `__dict__` 不许出现 Thread 的内部方法名）。
+  - ⚠️ 守卫自己踩过两个坑：① 只遍历 `worker._runners` 而它在 `start()` 前是空列表 → **在空集合上恒真**；② 把 `_invoke_excepthook`/`_is_stopped`/`_tstate_lock` 算进「违规」会误伤（这些是 `Thread.__init__` 自己写进实例的）。
+  - ⚠️ **教训**：云端 venv 是 **Python 3.12**、本地/打包版是 3.13 —— 凡涉及 CPython 内部行为（线程、contextvars、asyncio）的改动，本地全绿不等于云端能跑。
+- **回滚口径（云端）**：`frontend/dist` 已被 Vue 产物替换，回滚需先恢复 `/opt/fayelong/.backup/dist-20261022-145723`（旧 React），再按需回退 `backend`。
+- [x] ⚠️ `data/` 全程只读不覆盖 → 实测行数逐项未变（只 `create_all` 补了新表与新列，未改写既有行）
+- [x] 写作批改本轮**不启用**：不配 `FAYELONG_GRADING_*`，保持 `off`（默认降级，零付费）。将来要启用只需在 `fayelong-worker.service` 注入变量后 `daemon-reload` + 重启
 - [x] `deploy/README.md` 补脚注：`STATIC_CANDIDATES[0]` 已是 `frontend-vue/dist`，云端因无该产物仍回落 `frontend/dist`，**切换时必须同步更新**（原文案结论对但理由错，属「最危险的那类陈旧注释」）
 
 ---
@@ -480,7 +490,7 @@ P0 测试网 ──► P3 Alembic ──► P3 jobs 表+worker ──► P3 分�
 | P4-1/4-2 题型插件化 | 3d | ≈1.0 天 | ✅ PASS（2026-10-21，QA 独立复核） | 注册表 5 模块 + `GET /api/question-types`；前端三级降级挂载；7 个 verify 脚本全绿；G4-① 由 QA 自造题型验证；契约 34/42 → **35/43** |
 | P4-3 IELTS 六表 | 1.5d | ≈0.6 天 | ✅ PASS（2026-10-22，QA 独立复核） | 7 张新表（含批改缓存）+ 迁移 0003 + 6 端点；18 表/131 列/20 索引/11 外键；老库副本升级老 9 表逐表哈希不变；契约 35/43 → **41/49** |
 | P4-4 写作批改异步化 | 1–1.5d | ≈0.6 天 | ✅ PASS | `grade_writing` 走 IO 池；缓存命中 `calls==1`；**默认降级（零付费）**；密钥四出口无原文；日配额硬闸 |
-| P5 切换上线 | 1.5d | ≈0.7 天（本地部分） | 🟡 本地完成，**云端待确认** | 双跑 **193=193 零分歧**；`STATIC_CANDIDATES` Vue 首选 + 7 条护栏单测；tag `frontend-react-final`；全量包实测为 Vue 产物；云端灰度/发布未做 |
+| P5 切换上线 | 1.5d | ≈1.2 天 | ✅ **已上线**（2026-10-22 15:07） | 双跑 193=193；静态候选 Vue 首选 + 7 条护栏；tag `frontend-react-final`；**云端硬切完成**（公网 bundle md5 与本地一致、旧 React 404、18 表零数据漂移、`worker.mode=external`）；顺带修掉 Python 3.12 的 `Thread._stop` 冲突（本地 3.13 测不出） |
 | **合计** | **19–25d** | **已用 ≈18 天**（前端链 P0–P2 ≈11.8 + P3 ≈3.8 + P4 ≈2.4；P5 本地 ≈0.7，云端未做） | | 业余约 8–12 周；**P3/P4 完成，P5 仅剩云端切换** |
 
 **⚠️ 前端链（P0–P2）至此全部完成。** P2 收尾时仍挂账的 2 项覆盖缺口（不影响已过闸门的结论，属回归套件增强）：

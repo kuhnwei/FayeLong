@@ -143,7 +143,13 @@ class _PoolRunner(threading.Thread):
         self.size = max(1, int(size))
         self.executor: ThreadPoolExecutor = new_executor(pool, self.size)
         self._slots = threading.Semaphore(self.size)
-        self._stop = threading.Event()
+        # ⚠️ 必须叫 `_stop_event`，**不能**叫 `_stop`：
+        #    `threading.Thread` 自己有一个内部方法 `Thread._stop()`（CPython ≤3.12 的
+        #    `_wait_for_tstate_lock()` 在 join 收尾时会调用它）。用 `self._stop` 存
+        #    Event 会把它盖掉，于是 `join()` 里 `self._stop()` → `'Event' object is
+        #    not callable`。Python 3.13 移除了那条内部调用，所以本地 3.13 全绿、
+        #    云端 3.12 **一 stop 就崩**（2026-10-22 云端切换时实测）。
+        self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._active = 0
         self._poll = max(0.05, settings.job_poll_interval_ms / 1000.0)
@@ -196,7 +202,7 @@ class _PoolRunner(threading.Thread):
     def run(self) -> None:  # noqa: D401  （threading.Thread 的约定入口）
         """主循环：抢槽位 → 认领 → 派发；空转时指数退避到 `job_idle_max_ms`。"""
         idle_delay = self._poll
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             if not self._slots.acquire(timeout=self._poll):
                 continue
             # ★ 先占住「我可能要执行」的名额，**再**认领。
@@ -213,14 +219,14 @@ class _PoolRunner(threading.Thread):
                 with self._lock:
                     self._active -= 1
                 self._slots.release()
-                self._stop.wait(self._idle_max)
+                self._stop_event.wait(self._idle_max)
                 continue
 
             if job is None:
                 with self._lock:
                     self._active -= 1
                 self._slots.release()
-                self._stop.wait(idle_delay)
+                self._stop_event.wait(idle_delay)
                 idle_delay = min(self._idle_max, idle_delay * 2)
                 continue
 
@@ -295,7 +301,7 @@ class _PoolRunner(threading.Thread):
             没人跑（要等租约过期才被回收）。join 的等待上限取得很短（一轮轮询），
             因为 `run()` 的每个阻塞点都带超时、收到 stop 后最迟一个 poll 就退出。
         """
-        self._stop.set()
+        self._stop_event.set()
         if self.is_alive() and threading.current_thread() is not self:
             self.join(timeout=max(5.0, self._poll * 4))
         self.executor.shutdown(wait=True, cancel_futures=False)
