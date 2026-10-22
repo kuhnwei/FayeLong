@@ -415,6 +415,40 @@
         "title": "CategoryUpdate",
         "type": "object"
       },
+      "CourseProgressOut": {
+        "description": "单个素材的听写完成度。",
+        "properties": {
+          "attempted": {
+            "default": 0,
+            "title": "Attempted",
+            "type": "integer"
+          },
+          "media_id": {
+            "title": "Media Id",
+            "type": "integer"
+          },
+          "pct": {
+            "default": 0.0,
+            "title": "Pct",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id",
+          "title"
+        ],
+        "title": "CourseProgressOut",
+        "type": "object"
+      },
       "Credentials": {
         "properties": {
           "password": {
@@ -435,6 +469,35 @@
           "password"
         ],
         "title": "Credentials",
+        "type": "object"
+      },
+      "DailyPoint": {
+        "description": "单日听写量点。无听写日为显式 0（前端不判空）。",
+        "properties": {
+          "accuracy": {
+            "default": 0.0,
+            "title": "Accuracy",
+            "type": "number"
+          },
+          "attempts": {
+            "default": 0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "new_vocab": {
+            "default": 0,
+            "title": "New Vocab",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "DailyPoint",
         "type": "object"
       },
       "DictForm": {
@@ -753,6 +816,33 @@
           "items"
         ],
         "title": "InboxResponse",
+        "type": "object"
+      },
+      "KpiOut": {
+        "description": "顶部 KPI 四卡。",
+        "properties": {
+          "streak_days": {
+            "default": 0,
+            "title": "Streak Days",
+            "type": "integer"
+          },
+          "today_accuracy": {
+            "default": 0.0,
+            "title": "Today Accuracy",
+            "type": "number"
+          },
+          "today_attempts": {
+            "default": 0,
+            "title": "Today Attempts",
+            "type": "integer"
+          },
+          "today_new_vocab": {
+            "default": 0,
+            "title": "Today New Vocab",
+            "type": "integer"
+          }
+        },
+        "title": "KpiOut",
         "type": "object"
       },
       "MediaDetailOut": {
@@ -1187,6 +1277,52 @@
         "title": "NoteUpsert",
         "type": "object"
       },
+      "OverviewOut": {
+        "description": "统计页 overview 全量响应。",
+        "properties": {
+          "courses": {
+            "items": {
+              "$ref": "#/components/schemas/CourseProgressOut"
+            },
+            "title": "Courses",
+            "type": "array"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/DailyPoint"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "days": {
+            "default": 14,
+            "title": "Days",
+            "type": "integer"
+          },
+          "kpi": {
+            "$ref": "#/components/schemas/KpiOut"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/RecentAttemptOut"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "vocab": {
+            "$ref": "#/components/schemas/VocabStatsOut"
+          }
+        },
+        "required": [
+          "daily",
+          "kpi",
+          "courses",
+          "recent",
+          "vocab"
+        ],
+        "title": "OverviewOut",
+        "type": "object"
+      },
       "PaperDetailOut": {
         "description": "`GET /api/papers/{id}` 的响应（结构树，无任何答案）。",
         "properties": {
@@ -1499,6 +1635,31 @@
           "grade_mode"
         ],
         "title": "QuestionTypeOut",
+        "type": "object"
+      },
+      "RecentAttemptOut": {
+        "description": "最近一次听写。",
+        "properties": {
+          "accuracy": {
+            "title": "Accuracy",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "sentence_text": {
+            "title": "Sentence Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentence_text",
+          "created_at",
+          "accuracy"
+        ],
+        "title": "RecentAttemptOut",
         "type": "object"
       },
       "ReportItemOut": {
@@ -4258,6 +4419,50 @@
           }
         },
         "summary": "Get Stats",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/stats/overview": {
+      "get": {
+        "description": "统计页 14 天学习概览（ARCH §6.1）。\n\n口径：\n- 所有「按日」聚合用 `func.date(..., 'localtime')` 得到**本地日** `YYYY-MM-DD`；\n- `daily` 恒为 `days` 长（0 填充，无听写日 attempts/accuracy/new_vocab 显式 0）；\n- `streak_days`：从今天向前数连续 `attempts>0` 的天数，今天无听写 → 0；\n- `courses.pct` 0–100 float，`total=0` 时 0；按 pct desc 取前 10；\n- `recent` 按 `created_at desc` 取 6 条；\n- 空库返回 HTTP 200 全零结构（非 404）。",
+        "operationId": "get_overview_api_stats_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Overview",
         "tags": [
           "stats"
         ]

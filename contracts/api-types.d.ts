@@ -832,6 +832,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview
+         * @description 统计页 14 天学习概览（ARCH §6.1）。
+         *
+         *     口径：
+         *     - 所有「按日」聚合用 `func.date(..., 'localtime')` 得到**本地日** `YYYY-MM-DD`；
+         *     - `daily` 恒为 `days` 长（0 填充，无听写日 attempts/accuracy/new_vocab 显式 0）；
+         *     - `streak_days`：从今天向前数连续 `attempts>0` 的天数，今天无听写 → 0；
+         *     - `courses.pct` 0–100 float，`total=0` 时 0；按 pct desc 取前 10；
+         *     - `recent` 按 `created_at desc` 取 6 条；
+         *     - 空库返回 HTTP 200 全零结构（非 404）。
+         */
+        get: operations["get_overview_api_stats_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vocab": {
         parameters: {
             query?: never;
@@ -1139,12 +1167,60 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * CourseProgressOut
+         * @description 单个素材的听写完成度。
+         */
+        CourseProgressOut: {
+            /**
+             * Attempted
+             * @default 0
+             */
+            attempted: number;
+            /** Media Id */
+            media_id: number;
+            /**
+             * Pct
+             * @default 0
+             */
+            pct: number;
+            /** Title */
+            title: string;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /** Credentials */
         Credentials: {
             /** Password */
             password: string;
             /** Username */
             username: string;
+        };
+        /**
+         * DailyPoint
+         * @description 单日听写量点。无听写日为显式 0（前端不判空）。
+         */
+        DailyPoint: {
+            /**
+             * Accuracy
+             * @default 0
+             */
+            accuracy: number;
+            /**
+             * Attempts
+             * @default 0
+             */
+            attempts: number;
+            /** Date */
+            date: string;
+            /**
+             * New Vocab
+             * @default 0
+             */
+            new_vocab: number;
         };
         /**
          * DictForm
@@ -1320,6 +1396,32 @@ export interface components {
             inbox_dir: string;
             /** Items */
             items: components["schemas"]["InboxItem"][];
+        };
+        /**
+         * KpiOut
+         * @description 顶部 KPI 四卡。
+         */
+        KpiOut: {
+            /**
+             * Streak Days
+             * @default 0
+             */
+            streak_days: number;
+            /**
+             * Today Accuracy
+             * @default 0
+             */
+            today_accuracy: number;
+            /**
+             * Today Attempts
+             * @default 0
+             */
+            today_attempts: number;
+            /**
+             * Today New Vocab
+             * @default 0
+             */
+            today_new_vocab: number;
         };
         /** MediaDetailOut */
         MediaDetailOut: {
@@ -1544,6 +1646,25 @@ export interface components {
             content: string;
         };
         /**
+         * OverviewOut
+         * @description 统计页 overview 全量响应。
+         */
+        OverviewOut: {
+            /** Courses */
+            courses: components["schemas"]["CourseProgressOut"][];
+            /** Daily */
+            daily: components["schemas"]["DailyPoint"][];
+            /**
+             * Days
+             * @default 14
+             */
+            days: number;
+            kpi: components["schemas"]["KpiOut"];
+            /** Recent */
+            recent: components["schemas"]["RecentAttemptOut"][];
+            vocab: components["schemas"]["VocabStatsOut"];
+        };
+        /**
          * PaperDetailOut
          * @description `GET /api/papers/{id}` 的响应（结构树，无任何答案）。
          */
@@ -1729,6 +1850,21 @@ export interface components {
              * @default false
              */
             requires_external: boolean;
+        };
+        /**
+         * RecentAttemptOut
+         * @description 最近一次听写。
+         */
+        RecentAttemptOut: {
+            /** Accuracy */
+            accuracy: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Sentence Text */
+            sentence_text: string;
         };
         /**
          * ReportItemOut
@@ -3509,6 +3645,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatsOut"];
+                };
+            };
+        };
+    };
+    get_overview_api_stats_overview_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
