@@ -139,7 +139,12 @@ health_check(){
 	step "本地健康检查"
 	sleep 1
 	curl -s -o /dev/null -w "  backend 127.0.0.1:8000/api/health -> %{http_code}\n" --max-time 15 http://127.0.0.1:8000/api/health || true
-	curl -s -o /dev/null -w "  caddy   :80/                     -> %{http_code}\n" --max-time 15 http://127.0.0.1/ || true
+	# 站点已切 HTTPS：先用 --resolve 把域名钉到回环直连 Caddy，避免依赖公网回环
+	curl -s -o /dev/null -w "  caddy   :443/ (HTTPS)            -> %{http_code}\n" --max-time 20 \
+		--resolve fayelong.com.cn:443:127.0.0.1 https://fayelong.com.cn/ || true
+	# 明文口应返回 301/308 跳转，返回 200 说明 HTTPS 站点没生效
+	curl -s -o /dev/null -w "  caddy   :80/  (应 301 或 308)     -> %{http_code}\n" --max-time 15 \
+		-H "Host: fayelong.com.cn" http://127.0.0.1/ || true
 }
 
 target="${1:-all}"

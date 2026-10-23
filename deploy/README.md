@@ -1,6 +1,6 @@
 # FayeLong 部署手册（Linux / 腾讯云轻量应用服务器）
 
-> 本文档面向运维与后续维护者。目标形态：**浏览器打开 `http://<公网IP>` 即为 FayeLong 首页**。
+> 本文档面向运维与后续维护者。目标形态：**浏览器打开 `https://fayelong.com.cn` 即为 FayeLong 首页**（HTTPS + Let's Encrypt 自动续期，见 §十二）。
 > 已验证环境：Ubuntu 24.04.4 LTS x86_64 / 2 vCPU / 2 GB 内存 / Python 3.12.3 / ffmpeg 6.1.1。
 
 ---
@@ -8,10 +8,10 @@
 ## 一、架构总览
 
 ```
-                  公网 :80
-                     │  (HTTP，纯 IP 访问，暂无域名/证书)
+              公网 :443 (HTTPS)          :80 → 301 跳转到 :443
+                     │  (证书由 Caddy 内置 ACME 自动申领 / 自动续期)
                  ┌───▼────────┐
-                 │   Caddy    │  反向代理 + gzip/zstd 压缩 + 访问日志
+                 │   Caddy    │  反向代理 + gzip/zstd 压缩 + 访问日志 + TLS 终止
                  └───┬────────┘
                      │  reverse_proxy → 127.0.0.1:8000
                  ┌───▼──────────────────────┐
@@ -62,7 +62,7 @@
 | 系统级文件 | 作用 |
 |---|---|
 | `/etc/systemd/system/fayelong.service` | 托管 uvicorn（自启、崩溃重启、内存上限） |
-| `/etc/caddy/Caddyfile` | `:80` 站点，反代到 127.0.0.1:8000 |
+| `/etc/caddy/Caddyfile` | `fayelong.com.cn` 站点：443 HTTPS 终止 + 反代 127.0.0.1:8000（证书自动签发/续期） |
 | `/var/log/fayelong/*.log` | 服务 stdout/stderr |
 | `/var/log/caddy/fayelong-access.log` | 访问日志 |
 
@@ -130,18 +130,29 @@ nohup setsid bash install.sh models </dev/null >/var/log/fayelong/install-models
 tail -f /var/log/fayelong/install-models.log
 ```
 
-### 步骤 3：放通防火墙 80 端口
+### 步骤 3：放通防火墙 80 与 443 端口
 
 在腾讯云轻量控制台（或 `lighthouse-ops` 连接器）为该实例新增规则：
-`TCP / 端口 80 / 来源 0.0.0.0/0 / ACCEPT / 描述 “FayeLong Web”`。
+
+| 协议 | 端口 | 来源 | 动作 | 描述 |
+|---|---|---|---|---|
+| TCP | 80 | 0.0.0.0/0 | ACCEPT | FayeLong Web（ACME HTTP-01 校验 + HTTP→HTTPS 跳转） |
+| TCP | 443 | 0.0.0.0/0 | ACCEPT | FayeLong HTTPS |
+
 **不要改动 22(SSH) 与 ICMP 规则。**
+
+> ⚠️ **443 没放通是最典型的「证书签出来了但网站打不开」原因**：证书签发靠 80 端口的 HTTP-01
+> 校验，所以即使 443 被云防火墙挡住，`journalctl -u caddy` 里依然会显示签发成功，
+> 但浏览器连不上 443。验收时务必从**公网**测 443，不要只测 `127.0.0.1`。
 
 ### 步骤 4：验收
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/health   # 期望 200
-curl -s -o /dev/null -w "%{http_code}\n" http://<公网IP>/                    # 期望 200
+curl -s -o /dev/null -w "%{http_code}\n" https://fayelong.com.cn/            # 期望 200
+curl -s -o /dev/null -w "%{http_code}\n" http://fayelong.com.cn/             # 期望 301/308
 systemctl is-enabled fayelong                                               # 期望 enabled
+systemctl is-enabled caddy                                                  # 期望 enabled
 ```
 
 ---
@@ -334,3 +345,102 @@ curl -s 127.0.0.1:8000/api/health | python3 -m json.tool
 - `worker.last_heartbeat_at` 应在 30s 内（否则 worker 心跳停了）；
 - `jobs.pending` 长期 > 0 且 `jobs.running == 0` → worker 没在消费，看
   `journalctl -u fayelong-worker`。
+
+---
+
+## 十二、HTTPS 与证书（Let's Encrypt 自动续期）
+
+**上线时间**：2026-10-23 ｜ **域名**：`fayelong.com.cn`（`www` 无解析，不签）
+
+### 12.1 结论先行：本机没有、也不需要 Certbot
+
+服务器跑的是 **Caddy v2.11.4**，它内置 ACME 客户端，把站点地址从 `:80` 改成 `fayelong.com.cn`
+的那一刻起就同时拿到了四件事：
+
+1. 向 Let's Encrypt 申领免费证书（90 天有效）；
+2. 自动把 `:80` 的明文请求 301 到 `:443`；
+3. 后台每 12h 巡检一次，到期前自动续签并**热加载**（不重启进程、不中断连接）；
+4. 证书链、OCSP、密钥轮换全部自理。
+
+因此**不装 nginx、不装 certbot、不写 cron、不加 systemd timer**。多引一个 ACME 客户端只会
+引入「两个客户端抢同一份证书 / 续期后忘记 reload」这类故障，收益为零。
+
+> 参考：若日后确实要换方案，`certbot --nginx` 需要先引入 nginx 并重写现有的
+> gzip/zstd 压缩、`/assets/*` 强缓存、SSE `flush_interval -1` 三处配置，改动面远大于收益。
+
+### 12.2 当前证书
+
+| 项 | 值 |
+|---|---|
+| 签发者 | Let's Encrypt（中间 CA `YE2`） |
+| 主体 | `CN=fayelong.com.cn` |
+| 签发 / 到期 | 2026-10-23 → **2027-01-21** |
+| 续期触发 | ARI 建议窗口 ≈ 2026-12-21（早于到期 30 天） |
+| 私钥与证书落盘 | `/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/fayelong.com.cn/` |
+
+### 12.3 验证命令（运维日常）
+
+```bash
+# 1) 看证书到期时间（最直观）
+echo | openssl s_client -connect fayelong.com.cn:443 -servername fayelong.com.cn 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates
+
+# 2) 看跳转链路（期望 308 / 301）
+curl -sI http://fayelong.com.cn/ | head -3
+
+# 3) 看续期有没有正常调度（关键：出现 renewal / obtained 字样）
+journalctl -u caddy --since "-7d" | grep -iE "acme|renew|obtained" | tail -20
+```
+
+> Caddy 没有「强制续期」子命令。真要强制重签，只能删证书目录后 reload
+> （`systemctl reload caddy` 会让 Caddy 重新走一遍 order）——**注意 Let's Encrypt 对同一
+> 域名有「每周 5 次重复签发」的速率限制**，非排障不要随便重签。
+
+### 12.4 站点配置要点（`deploy/linux/Caddyfile.site`）
+
+```caddyfile
+fayelong.com.cn {            # ← 写裸域名即开 HTTPS；写 :80 就是纯 HTTP
+    encode zstd gzip
+    @assets path /assets/*
+    header @assets Cache-Control "public, max-age=31536000, immutable"
+    reverse_proxy 127.0.0.1:8000 { flush_interval -1 }   # flush_interval -1 是 SSE 进度条的生命线
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Strict-Transport-Security "max-age=31536000"      # 一年内强制 HTTPS；未加 includeSubDomains/preload
+    }
+}
+
+# 老书签 http://114.132.173.241/ 仍可用，跳到域名；精确匹配该 Host，不抢 ACME 校验路径
+http://114.132.173.241 { redir https://fayelong.com.cn{uri} permanent }
+```
+
+**为什么 HTTPS 之后不会有混合内容问题**（已实测排除）：
+
+- 前端 API 基址是相对路径 `/api`（`frontend-vue/src/api/request.ts` → `export const BASE = '/api'`），
+  同源请求，不经过 CORS；
+- 产物 bundle 里唯一的 `http://` 是 `www.w3.org/2000/svg` 这类 XML 命名空间常量，不会被请求；
+- uvicorn 已带 `--proxy-headers --forwarded-allow-ips=127.0.0.1`，后端能正确识别
+  `X-Forwarded-Proto: https`，应用侧若拼绝对地址也会是 https。
+
+### 12.5 回滚（回到纯 HTTP）
+
+```bash
+ls -t /etc/caddy/Caddyfile.bak.* | head -1                  # 找到切换前的备份
+cp -a "$(ls -t /etc/caddy/Caddyfile.bak.* | head -1)" /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+systemctl reload caddy
+```
+
+> ⚠️ 回滚前先想清楚：一旦站点在用户浏览器里缓存过 `Strict-Transport-Security`，
+> 该浏览器在 max-age（一年）内**仍会强制 https**，纯 HTTP 回滚对它无效。
+
+### 12.6 常见故障对照
+
+| 现象 | 原因 | 处置 |
+|---|---|---|
+| 证书签发成功但浏览器连不上 | 云防火墙未放通 443/TCP | 控制台加 `TCP/443/0.0.0.0/0/ACCEPT` |
+| `caddy validate` 报 address already in use | 另一个进程占了 80/443 | `ss -tlnp \| grep -E ':80\|:443'` |
+| 签发失败 `unauthorized` / 超时 | 80 被云防火墙或云厂商拦截（**大陆机器未备案会直接拦 80**） | 先确认 `curl -I http://fayelong.com.cn/` 返回的是真实应用响应而不是拦截页 |
+| 续期后仍旧证书 | reload 未生效 | `systemctl reload caddy`；`journalctl -u caddy -n 50` |
+| 页面能开但听写进度条不动 | 反代丢了 SSE flush | 确认 `reverse_proxy` 块里 `flush_interval -1` 还在 |

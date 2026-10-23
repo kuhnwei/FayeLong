@@ -1,0 +1,13 @@
+# 换行符策略
+# 背景：本机 core.autocrlf=true，若不显式钉死，部署到 Linux 的脚本会被 checkout 成 CRLF，
+# 导致 `#!/usr/bin/env bash` 变成 `bash\r`（bad interpreter）或 Caddyfile 解析异常。
+# 只对本仓库「真的要上 Linux」的资产声明，避免全库 renormalize 产生无意义 diff。
+
+deploy/linux/* text eol=lf
+*.sh           text eol=lf
+*.service      text eol=lf
+*.site         text eol=lf
+
+# Windows 侧脚本保持 CRLF
+*.bat          text eol=crlf
+*.ps1          text eol=crlf

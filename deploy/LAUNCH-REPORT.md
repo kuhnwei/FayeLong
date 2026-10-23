@@ -1,7 +1,9 @@
 # FayeLong 上线报告
 
 ## 访问地址
-**http://114.132.173.241/** （已实测打开：是 —— 公网 HTTP 200，并用 headless Chrome 实际渲染出应用界面）
+**https://fayelong.com.cn/** （2026-10-23 起为 HTTPS 正式入口；Let's Encrypt 证书由 Caddy 内置 ACME 自动签发与续期，详见 `deploy/README.md` §十二）
+
+旧地址 **http://114.132.173.241/** 保留兼容，返回 301 跳转到域名。
 
 ## 部署信息
 | 项 | 值 |
@@ -61,15 +63,16 @@ ASR 性能（2 vCPU，同一 34.4s 音频）：**small 39.0s（RTF 1.13×）/ ba
 
 ## 需要用户自己完成的步骤
 1. **续费/自动续费**：2026-11-14 前在腾讯云控制台为 `lhins-a0s35jwt` 续费或开启自动续费，否则站点下线。
-2. **（可选）接入域名**：购买域名 → DNS 解析 A 记录指向 `114.132.173.241` → 大陆主机需完成 **ICP 备案** → 把 Caddy 站点的 `:80` 改为域名，Caddy 自动签发 HTTPS。
-3. **（可选）移动端真机验收**：用手机浏览器打开 `http://114.132.173.241/`，确认无横向滚动、导航可展开、按钮不误触。
+2. ~~**（可选）接入域名**~~ —— **已于 2026-10-23 完成**：域名 `fayelong.com.cn` 解析到 `114.132.173.241`，Caddy 站点改为域名并自动签发 Let's Encrypt 证书，80/443 均已在云防火墙放通，HTTP 自动 301 到 HTTPS。
+3. **（可选）移动端真机验收**：用手机浏览器打开 `https://fayelong.com.cn/`，确认无横向滚动、导航可展开、按钮不误触。
 4. **（可选）若要 SEO 收录**：需前端补 meta description / og / canonical，后端补 robots.txt、sitemap.xml 与独立 404。
 5. **（可选）换识别规格**：默认 `small`（准确率优先）。如需吞吐优先，把 `FAYELONG_WHISPER_MODEL` 改为 `base` 并重启（模型已在机上）。
 
 ## 上线后建议观察的指标
 1. **服务存活与重启**：`systemctl is-active fayelong`、`systemctl show fayelong -p NRestarts`（异常自愈次数）。
 2. **内存与 OOM**：`systemctl show fayelong -p MemoryCurrent`、`journalctl -k | grep -i oom`（转写高峰是否触顶 1.3 G）。
-3. **公网可用性与延迟**：对 `http://114.132.173.241/api/health` 做外部拨测，观察 5xx 与 TTFB 变化。
+3. **公网可用性与延迟**：对 `https://fayelong.com.cn/api/health` 做外部拨测，观察 5xx 与 TTFB 变化。
+4. **证书有效期**：`openssl s_client -connect fayelong.com.cn:443 -servername fayelong.com.cn | openssl x509 -noout -dates`，到期日应随自动续期向后推进。
 
 ---
 > 交付物：`deploy/linux/{install.sh, fayelong.service, Caddyfile.site, update.sh}`、`deploy/README.md`、`deploy/PRELAUNCH-CHECKLIST.md`、本报告。

@@ -1,15 +1,25 @@
 # FayeLong 站点块（Caddy v2 / Ubuntu 24.04）
 # 由 deploy/linux/install.sh 安装为 /etc/caddy/Caddyfile
-# 形态：公网 :80 → 反代本机 127.0.0.1:8000 的 FayeLong（FastAPI 单端口应用）
+# 形态：公网 443（HTTPS）→ 反代本机 127.0.0.1:8000 的 FayeLong（FastAPI 单端口应用）
 #
-# 说明：
-#  - 本应用暂无域名与证书，用纯 HTTP 的 :80 站点；后续接域名时把 `:80`
-#    换成 `fayelong.example.com`，Caddy 会自动签发 HTTPS 并 301。
-#  - 访问日志默认走 journal（`journalctl -u caddy`）。**不要**在此加
+# ——— HTTPS / 证书（2026-10-23 起）———
+#  - 站点地址写成裸域名即触发 Caddy 内置 ACME：自动向 Let's Encrypt 申领免费证书，
+#    并自动把 :80 的明文请求 301 到 https。**不需要 certbot、不需要 nginx、不需要 cron。**
+#  - 续期是 Caddy 自己的后台任务（每 12h 巡检一次）：证书剩余有效期低于总寿命的 1/3
+#    （90 天证书≈剩 30 天）时自动续签，续完自动热加载，进程无需重启、站点不中断。
+#      · 证书落盘：/var/lib/caddy/.local/share/caddy/certificates/
+#      · 查看到期：见 deploy/README.md「HTTPS 与证书」一节
+#      · 排障：journalctl -u caddy -f | grep -i acme
+#  - ⚠️ 前置条件：腾讯云轻量「防火墙」必须放通 443/TCP。
+#    HTTP-01 校验走 80，但对外提供加密服务走 443 —— 443 没放通会表现为签发出了、
+#    网站却打不开。放通命令见 deploy/README.md（或腾讯云控制台 → 防火墙 → 添加规则）。
+#  - ⚠️ 证书签发要求域名已解析到本机，且大陆机器需完成 ICP 备案，否则 80 端口会被拦截。
+#
+#  - 访问日志默认走 journal（journalctl -u caddy）。**不要**在此加
 #    `log { output file ... }`：Caddy 以 caddy 用户运行，写自定义日志文件会因
 #    权限（systemd 沙箱）失败，导致 reload 报错、配置不生效。
 
-:80 {
+fayelong.com.cn {
 	# 文本资源压缩（实测：JS 315KB→98KB，CSS 24KB→5KB）
 	encode zstd gzip
 
@@ -18,6 +28,8 @@
 	header @assets Cache-Control "public, max-age=31536000, immutable"
 
 	# 反向代理到后端；SSE（/api/media/{id}/progress）需即时 flush
+	# 后端已用 --proxy-headers --forwarded-allow-ips=127.0.0.1 信任 X-Forwarded-Proto，
+	# 因此应用侧拼出的绝对地址也会是 https，不会产生混合内容。
 	reverse_proxy 127.0.0.1:8000 {
 		flush_interval -1
 	}
@@ -26,5 +38,14 @@
 	header {
 		-Server
 		X-Content-Type-Options nosniff
+		# 一年内强制走 HTTPS。刻意不加 includeSubDomains / preload：
+		# 本域名无子域，留出撤销余地（万一证书链出问题不必等一年）。
+		Strict-Transport-Security "max-age=31536000"
 	}
+}
+
+# 裸 IP 访问兼容：老书签 http://114.132.173.241/ 仍可用，直接跳到域名。
+# 精确匹配该 Host，不会抢走 fayelong.com.cn 的 ACME 校验路径。
+http://114.132.173.241 {
+	redir https://fayelong.com.cn{uri} permanent
 }
