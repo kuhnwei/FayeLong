@@ -1,4 +1,4 @@
-# FayeLong 英语学习网站 — 项目记忆索引 v4（2026-10-16）
+# FayeLong 精听 — 项目记忆索引 v4（2026-10-16）
 
 > ⚠️ `MEMORY.md` 受 3,000 字符/会话写入上限约束，只放**高频锚点**。
 > **完整项目档案见同目录 `PROJECT-NOTES.md`（算法判据 / 环境坑 / 云端流程 / ADR 决策全在里面，开工前先读它）**；逐日操作见 `YYYY-MM-DD.md`。
@@ -10,7 +10,8 @@
 - 版本 **v1.16.2**（多用户 + admin 管理），分支 `main`，本机可直连 GitHub。
 - 后端 `backend/app`：12 个 api 模块 / **48 个 REST 端点**（+`/api/admin/*` 7 个 + marks 独立端点）/ 19 张表（+sentence_marks）。前端 `frontend-vue/`（Vue3）。
 - **多用户**：媒体库全站共享（admin 上传）；普通用户仅 admin 创建；删除=软删除；admin 账号迁移后自动建（`services/bootstrap.py`，随机密码打印控制台）；user_id 外键**刻意 NO ACTION**（SQLite ALTER 无法表达 ondelete + 软删除策略）。
-- 云端 http://114.132.173.241/（腾讯云轻量 2vCPU·2GB，已续费；**Python 3.12** — 与本地 3.13 不同）；`ssh -i ~/.ssh/fayelong_deploy root@114.132.173.241` 可用（`ubuntu@` 不行）。
+- 云端 **https://fayelong.com.cn/**（2026-10-23 起 HTTPS；腾讯云轻量 2vCPU·2GB，已续费；**Python 3.12** — 与本地 3.13 不同）；裸 IP http://114.132.173.241/ 会 301 到域名。`ssh -i ~/.ssh/fayelong_deploy root@114.132.173.241` 可用（`ubuntu@` 不行）。
+  - ⭐ **HTTPS 口径**：服务器是 **Caddy 2.11.4，没有 nginx / certbot，以后也不要装**。站点地址写域名即自动签发+自动续期（走 LE ARI 建议窗口，无 cron/timer）。云防火墙须放通 **TCP 443 + UDP 443**（UDP 是 HTTP/3，Caddy 默认发 `Alt-Svc: h3`）。详见 `deploy/README.md` §十二。
 
 ## 正在执行
 **REFACTOR-PLAN-001**（`docs/REFACTOR-PLAN-001-执行计划.md`，施工文件，按闸门 G0→G5 推进）：
