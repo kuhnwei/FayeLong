@@ -308,10 +308,10 @@ print("INIT_OK", flush=True)
 _PROCS_PER_ROUND = 8
 #: 跑几轮。1 轮 × 8 进程已实测 6/6 次出现失败（≈4.2s）；加轮数只增耗时。
 _ROUNDS = 1
-#: 18 = 9 张老表 + P3-2 的 jobs/workers + P4-3 的 7 张 IELTS 表。
+#: 19 = 9 张老表 + P3-2 的 jobs/workers + P4-3 的 7 张 IELTS 表 + v1.16.2 的 sentence_marks。
 #: ⚠️ 加表时必须同步改这里：它的作用是「并发首启后表一张都不许缺」，
 #:    写成字典序清单而不是数量会更严格，但这条用例的判据本身是「数量齐」。
-_EXPECTED_TABLES = 18
+_EXPECTED_TABLES = 19
 
 
 def _app_root() -> pathlib.Path:

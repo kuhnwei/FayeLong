@@ -127,7 +127,7 @@ async function defaultDbPath() {
 
 /**
  * 从真实库**只读**读出签名密钥与站点账号 id（Node 内置 `node:sqlite`，只读连接）。
- * @returns {Promise<{ secret: Buffer, uid: number }>}
+ * @returns {Promise<{ secret: Buffer, uid: number, ver: number }>}
  */
 export async function readAuthSecret(dbPath) {
   const { DatabaseSync } = await import('node:sqlite')
@@ -137,9 +137,17 @@ export async function readAuthSecret(dbPath) {
     if (!secretRow || !secretRow.value) {
       throw new Error('库中缺少 settings.auth.secret（站点可能从未登录过，无法铸牌）')
     }
-    const userRow = db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get()
-    if (!userRow) throw new Error('users 表为空（站点尚未初始化账号）')
-    return { secret: Buffer.from(String(secretRow.value), 'hex'), uid: Number(userRow.id) }
+    // 多用户（v1.16.2）：取一个「可用」的用户（is_active=1），并带上其 token_version，
+    // 否则守卫回查 `token_version` 会把铸出来的牌判成过期。
+    const userRow = db
+      .prepare('SELECT id, token_version FROM users WHERE is_active = 1 ORDER BY id LIMIT 1')
+      .get()
+    if (!userRow) throw new Error('users 表为空或没有可用账号')
+    return {
+      secret: Buffer.from(String(secretRow.value), 'hex'),
+      uid: Number(userRow.id),
+      ver: Number(userRow.token_version ?? 0),
+    }
   } finally {
     db.close()
   }
@@ -151,8 +159,9 @@ export async function readAuthSecret(dbPath) {
  */
 export async function mintSessionToken(dbPath, ttlSeconds = 30 * 86400) {
   const { createHmac } = await import('node:crypto')
-  const { secret, uid } = await readAuthSecret(dbPath)
-  const payload = JSON.stringify({ uid, exp: Math.floor(Date.now() / 1000) + ttlSeconds })
+  const { secret, uid, ver } = await readAuthSecret(dbPath)
+  // 多用户（v1.16.2）：payload 必须带 `ver`（token_version），键序 uid → exp → ver。
+  const payload = JSON.stringify({ uid, exp: Math.floor(Date.now() / 1000) + ttlSeconds, ver })
   const body = Buffer.from(payload, 'utf8').toString('base64url')
   const signature = createHmac('sha256', secret).update(body, 'ascii').digest('base64url')
   return `${body}.${signature}`

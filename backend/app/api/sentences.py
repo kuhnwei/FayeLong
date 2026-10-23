@@ -18,11 +18,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user, require_admin
 from app.api.media import serialize_detail
 from app.core.paths import MediaError, audio_wav_path
 from app.db import get_db
-from app.models import Media, Sentence
+from app.models import Media, Sentence, SentenceMark, User
 from app.schemas.media import (
+    MarksUpdate,
     MediaDetailOut,
     SentenceMergeIn,
     SentenceSplitIn,
@@ -49,6 +51,11 @@ def _get_media(db: Session, sentence: Sentence) -> Media:
     if media is None:
         raise HTTPException(status_code=404, detail="所属媒体不存在")
     return media
+
+
+def _clear_marks(db: Session, sentence_id: int) -> None:
+    """清空某句**所有用户**的「易听错」标记（原文改写后词下标漂移，宁删不错位）。"""
+    db.query(SentenceMark).filter(SentenceMark.sentence_id == sentence_id).delete()
 
 
 def _audio_of(media: Media) -> Path:
@@ -129,18 +136,20 @@ def _split_text(text: str, ratio: float) -> tuple[str, str]:
 def update_sentence(
     sentence_id: int,
     payload: SentenceUpdate,
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MediaDetailOut:
-    """编辑单句（原文 / 翻译 / 时间边界）。"""
+    """编辑单句（原文 / 翻译 / 时间边界）。仅管理员。"""
     sentence = _get_sentence(db, sentence_id)
     media = _get_media(db, sentence)
     touched_time = False
 
     if payload.text_en is not None:
         new_en = payload.text_en.strip()
-        # 原文变了 → 易听错标记的词下标会漂移，直接作废（宁可丢标记也不错位高亮）
+        # 原文变了 → 易听错标记的词下标会漂移，作废该句**所有用户**的标记
+        # （宁可丢标记也不错位高亮）。
         if new_en != sentence.text_en:
-            sentence.marks = ""
+            _clear_marks(db, sentence.id)
         sentence.text_en = new_en
         sentence.is_edited = True
     if payload.text_zh is not None:
@@ -152,25 +161,56 @@ def update_sentence(
     if payload.end_ms is not None and payload.end_ms != sentence.end_ms:
         sentence.end_ms = max(sentence.start_ms + 100, payload.end_ms)
         touched_time = True
-    if payload.marks is not None:
-        # 整体替换；`dump` 内部做归并 + 夹取，越界区间自动丢弃
-        sentence.marks = marks_service.dump(payload.marks, sentence.text_en)
 
     db.commit()
     if touched_time:
         _cut(db, media, sentence)
         _reindex(db, media.id)
     db.refresh(sentence)
-    return serialize_detail(db, media)
+    return serialize_detail(db, media, user.id)
+
+
+@router.put("/{sentence_id}/marks", response_model=dict)
+def update_marks(
+    sentence_id: int,
+    payload: MarksUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """整体替换当前用户在该句上的「易听错」标记（空数组 = 清空）。"""
+    sentence = _get_sentence(db, sentence_id)
+    ranges = marks_service.dump(payload.marks, sentence.text_en)
+
+    mark = (
+        db.query(SentenceMark)
+        .filter(
+            SentenceMark.user_id == user.id,
+            SentenceMark.sentence_id == sentence_id,
+        )
+        .first()
+    )
+    if not ranges:
+        if mark is not None:
+            db.delete(mark)
+            db.commit()
+    elif mark is None:
+        db.add(SentenceMark(user_id=user.id, sentence_id=sentence_id, ranges=ranges))
+        db.commit()
+    else:
+        mark.ranges = ranges
+        db.commit()
+
+    return {"sentence_id": sentence_id, "marks": marks_service.load(ranges)}
 
 
 @router.post("/{sentence_id}/split", response_model=MediaDetailOut)
 def split_sentence(
     sentence_id: int,
     payload: SentenceSplitIn,
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MediaDetailOut:
-    """在 `at_ms` 处把一句拆成两句。"""
+    """在 `at_ms` 处把一句拆成两句。仅管理员。"""
     sentence = _get_sentence(db, sentence_id)
     media = _get_media(db, sentence)
 
@@ -191,7 +231,7 @@ def split_sentence(
     sentence.text_en = left_text
     sentence.is_edited = True
     sentence.text_zh = ""
-    sentence.marks = ""
+    _clear_marks(db, sentence.id)  # 原文拆分后词下标全部作废
 
     right = Sentence(
         media_id=media.id,
@@ -216,16 +256,17 @@ def split_sentence(
         if item.id in (sentence.id, right.id):
             _cut(db, media, item)
     db.commit()
-    return serialize_detail(db, media)
+    return serialize_detail(db, media, user.id)
 
 
 @router.post("/{sentence_id}/merge", response_model=MediaDetailOut)
 def merge_sentence(
     sentence_id: int,
     payload: SentenceMergeIn,
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MediaDetailOut:
-    """与相邻句合并（默认向后合并）。"""
+    """与相邻句合并（默认向后合并）。仅管理员。"""
     sentence = _get_sentence(db, sentence_id)
     media = _get_media(db, sentence)
 
@@ -252,7 +293,7 @@ def merge_sentence(
     first.text_en = f"{first.text_en.strip()} {second.text_en.strip()}".strip()
     first.text_zh = f"{first.text_zh.strip()} {second.text_zh.strip()}".strip()
     first.is_edited = True
-    first.marks = ""  # 原文拼接后词下标全部作废
+    _clear_marks(db, first.id)  # 原文拼接后词下标全部作废
 
     # 先删掉被并入句的切片文件
     if second.clip_path:
@@ -264,15 +305,16 @@ def merge_sentence(
     rows = _reindex(db, media.id)
     _cut(db, media, first)
     db.commit()
-    return serialize_detail(db, media)
+    return serialize_detail(db, media, user.id)
 
 
 @router.post("/{sentence_id}/retranslate", response_model=MediaDetailOut)
 def retranslate_sentence(
     sentence_id: int,
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MediaDetailOut:
-    """单句重新翻译（在线引擎 + 缓存）。"""
+    """单句重新翻译（在线引擎 + 缓存）。仅管理员。"""
     sentence = _get_sentence(db, sentence_id)
     media = _get_media(db, sentence)
     result = translate_service.translate(sentence.text_en)
@@ -280,4 +322,4 @@ def retranslate_sentence(
         raise HTTPException(status_code=502, detail="翻译引擎暂不可用，请稍后重试")
     sentence.text_zh = result["text"]
     db.commit()
-    return serialize_detail(db, media)
+    return serialize_detail(db, media, user.id)

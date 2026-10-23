@@ -129,14 +129,25 @@ class InboxResponse(BaseModel):
 
 
 class SentenceUpdate(BaseModel):
-    """PATCH 单句：仅传需要修改的字段（FR-M6 人工校对）。"""
+    """PATCH 单句：仅传需要修改的字段（FR-M6 人工校对）。
+
+    ⚠️ `marks` 已废弃：多用户后「易听错」标记是个人数据，改走独立的
+    `PUT /api/sentences/{id}/marks`（见 `MarksUpdate`）。本字段保留仅为契约兼容，
+    后端不再据此改动任何标记。
+    """
 
     text_en: str | None = None
     text_zh: str | None = None
     start_ms: int | None = None
     end_ms: int | None = None
-    # 易听错标记：传了就整体替换（空数组 = 清空）
+    # 已废弃（见 docstring）：传了会被忽略。
     marks: list[list[int]] | None = None
+
+
+class MarksUpdate(BaseModel):
+    """整体替换某句的「易听错」标记（空数组 = 清空）。个人数据，按当前用户隔离。"""
+
+    marks: list[list[int]]
 
 
 class SentenceSplitIn(BaseModel):

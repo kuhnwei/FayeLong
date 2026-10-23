@@ -14,8 +14,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
 from app.db import get_db
-from app.models import Attempt, Sentence
+from app.models import Attempt, Sentence, User
 from app.schemas.dictation import (
     AttemptCreate,
     AttemptListResponse,
@@ -33,6 +34,7 @@ router = APIRouter(tags=["dictation"])
 @router.post("/api/attempts", response_model=AttemptResult, status_code=201)
 def create_attempt(
     payload: AttemptCreate,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AttemptResult:
     """提交一次听写：与标准答案比对，记录结果并返回词级明细。"""
@@ -47,6 +49,7 @@ def create_attempt(
 
     attempt = Attempt(
         sentence_id=sentence.id,
+        user_id=user.id,
         input=text,
         accuracy=float(result["accuracy"]),
         is_correct=bool(result["is_correct"]),
@@ -55,7 +58,7 @@ def create_attempt(
     db.commit()
     db.refresh(attempt)
 
-    stat = study_service.sentence_stats(db, sentence.id)
+    stat = study_service.sentence_stats(db, sentence.id, user.id)
 
     return AttemptResult(
         sentence_id=sentence.id,
@@ -80,6 +83,7 @@ def create_attempt(
 def list_attempts(
     sentence_id: int,
     limit: int = Query(default=20, ge=1, le=200),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AttemptListResponse:
     """某句的听写历史（按时间倒序），每条记录附带词级明细。
@@ -93,10 +97,14 @@ def list_attempts(
     if sentence is None:
         raise HTTPException(status_code=404, detail="句子不存在")
 
-    total = db.query(Attempt).filter(Attempt.sentence_id == sentence_id).count()
+    total = (
+        db.query(Attempt)
+        .filter(Attempt.sentence_id == sentence_id, Attempt.user_id == user.id)
+        .count()
+    )
     rows = (
         db.query(Attempt)
-        .filter(Attempt.sentence_id == sentence_id)
+        .filter(Attempt.sentence_id == sentence_id, Attempt.user_id == user.id)
         .order_by(Attempt.id.desc())
         .limit(limit)
         .all()

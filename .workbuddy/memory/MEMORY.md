@@ -7,8 +7,9 @@
 个人自用、**零付费依赖**的英语精听/听写站。FastAPI(单端口 8000，同时托管前端) + React/Vite SPA。ASR=本地 faster-whisper small；翻译=有道 aidemo→MyMemory 免费在线；词典=ECDICT 全量。**唯一数据根 = `data/`，拷贝即迁移。**
 
 ## 现状
-- 版本 **v1.16.1**（`cb89281`），分支 `main`，本机可直连 GitHub。
-- 后端 `backend/app`：11 个 api 模块 / **42 个 REST 端点** / 9 张表。前端 `frontend/src`：**22 个 ts(x) / 7,564 行**。
+- 版本 **v1.16.2**（多用户 + admin 管理），分支 `main`，本机可直连 GitHub。
+- 后端 `backend/app`：12 个 api 模块 / **48 个 REST 端点**（+`/api/admin/*` 7 个 + marks 独立端点）/ 19 张表（+sentence_marks）。前端 `frontend-vue/`（Vue3）。
+- **多用户**：媒体库全站共享（admin 上传）；普通用户仅 admin 创建；删除=软删除；admin 账号迁移后自动建（`services/bootstrap.py`，随机密码打印控制台）；user_id 外键**刻意 NO ACTION**（SQLite ALTER 无法表达 ondelete + 软删除策略）。
 - 云端 http://114.132.173.241/（腾讯云轻量 2vCPU·2GB，已续费；**Python 3.12** — 与本地 3.13 不同）；`ssh -i ~/.ssh/fayelong_deploy root@114.132.173.241` 可用（`ubuntu@` 不行）。
 
 ## 正在执行
@@ -25,6 +26,7 @@
   - 🔴 **answer 铁律三重力证**：schema 无该字段 + 白名单挑字段 + `SECRET-*` 串断言；`report` **必须按 `submitted_at` 设闸**（领域层 409），`ResponseOut` 已删 `detail` —— 判分明细只经 report。
   - ⭐ **IELTS 迁移口径**：`0003` 只 `CREATE`；18 表/131 列/20 索引/11 外键；老库副本升级后**老 9 表逐表哈希不变**（TOTAL 必变，别拿 TOTAL 当证据）；**「只回退本批」用 `downgrade 0002`，不是 `downgrade base`**。
   - ⭐ **写作批改默认降级**：`FAYELONG_GRADING_PROVIDER=off` ⇒ 零付费离线可用，`degraded` 是成功态；缓存不存降级结果；`ungraded ≠ degraded`。
+- ⭐ **多用户改造（2026-10-23 完成，v1.16.2）**：详见 `2026-10-23.md`。关键坑：① `user_id` 必须声明在**表末尾**（ALTER 加列尾 vs create_all 模型顺序，否则迁移零差异断言红）；② 唯一约束用**显式 `Index(unique=True)`** 不用 UniqueConstraint；③ token 加 `ver`（token_version）实现软删/改密/停用即时失效；④ `test_auth` 清 users 前先清带 user_id 外键的子表；⑤ conftest `db_session` 依赖 `app_client` 触发 init_db。**后端 413 passed**。
 - ⭐ **数据安全不变量**：一律用**内容指纹** `python scripts/fingerprint_data.py`，基线 `TOTAL 278bcd28…6b13104c90ff4d32dad697f3b4f`；**文件 md5 不可靠**（真实登录会写 `users.last_login_at`）。
   - ⭐ **P3-4 分层原则**：`api/media.py` 682→420，新增 `services/media_ops.py` 承载**请求侧**领域动作；**不要**并进 `services/media.py`（那是 worker 热路径，4 stage + fencing，跑在 CPU/IO 池，两者失败语义不同）。
   - ⭐ **job_id 日志**：`ThreadPoolExecutor.submit` **不传播 contextvars** → 必须**在执行线程内部** `with job_log_context(...)`，不能在提交侧 `copy_context()`；`Filter` 要挂在 **handler** 上（logger 的 filter 不管子 logger 的 propagate）。

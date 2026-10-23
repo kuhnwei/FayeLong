@@ -32,6 +32,10 @@ COOKIE_NAME = "fayelong_session"
 #: `settings` 表里存放签名密钥的键
 SECRET_KEY = "auth.secret"
 
+#: 用户角色（v1.16.2 多用户）
+ROLE_ADMIN = "admin"
+ROLE_USER = "user"
+
 _ALGO = "sha256"
 _DEFAULT_ITERATIONS = 200_000
 
@@ -68,11 +72,35 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def new_admin_password() -> str:
+    """为自动创建的管理员生成一次性初始密码（打印到控制台，首次登录改密）。"""
+    return secrets.token_urlsafe(12)
+
+
 # --------------------------- 账号 ---------------------------
 
-def first_user(db: Session) -> User | None:
-    """取站点账号。单账号门禁下本表只有一行，取最早创建的那条。"""
-    return db.query(User).order_by(User.id).first()
+def count_users(db: Session) -> int:
+    """用户总数（用于判断「是否还需要初始化引导」）。"""
+    return db.query(User).count()
+
+
+def get_by_username(db: Session, username: str) -> User | None:
+    """按用户名查用户（多用户登录）。"""
+    return db.query(User).filter(User.username == username).first()
+
+
+def dummy_user() -> User:
+    """供「用户名不存在」时做恒定时比较的假用户（不落库）。
+
+    login 里即使查无此人也走一遍 `verify_password`，避免响应时间泄露用户名
+    是否存在（侧信道）。
+    """
+    return User(
+        username="",
+        salt="00" * 16,
+        password_hash="0" * 64,
+        iterations=_DEFAULT_ITERATIONS,
+    )
 
 
 # --------------------------- 会话 token ---------------------------
@@ -111,16 +139,25 @@ def get_secret(db: Session) -> bytes:
     return bytes.fromhex(value)
 
 
-def issue_token(user_id: int, secret: bytes, ttl_seconds: int) -> str:
-    """签发 `base64(payload).base64(hmac)` 形式的会话 token。"""
-    payload = {"uid": user_id, "exp": int(time.time()) + ttl_seconds}
+def issue_token(user_id: int, secret: bytes, ttl_seconds: int, token_version: int = 0) -> str:
+    """签发 `base64(payload).base64(hmac)` 形式的会话 token。
+
+    Args:
+        token_version: 会话吊销版本号。改密 / 重置 / 停用 / 软删时 +1，旧 cookie
+            携带的旧版本号会在守卫处被拒，实现「即时失效」。
+    """
+    payload = {"uid": user_id, "exp": int(time.time()) + ttl_seconds, "ver": token_version}
     body = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signature = _b64e(hmac.new(secret, body.encode("ascii"), hashlib.sha256).digest())
     return f"{body}.{signature}"
 
 
-def verify_token(token: str, secret: bytes | None) -> int | None:
-    """验签并检查过期，通过返回 user_id，否则 None。"""
+def verify_token(token: str, secret: bytes | None) -> tuple[int, int] | None:
+    """验签并检查过期，通过返回 ``(user_id, token_version)``，否则 None。
+
+    迁移前（单用户门禁）签发的旧 cookie 没有 ``ver`` 字段，这里按 0 兜底，
+    避免一升级就全员掉线；旧 cookie 只在管理员对该用户做了禁用/重置后才失效。
+    """
     if not token or secret is None or "." not in token:
         return None
     body, _, signature = token.partition(".")
@@ -138,7 +175,15 @@ def verify_token(token: str, secret: bytes | None) -> int | None:
         return None
     if exp < int(time.time()):
         return None
-    return uid
+    ver = payload.get("ver", 0)
+    if not isinstance(ver, int):
+        return None
+    return uid, ver
+
+
+def bump_token_version(db: Session, user: User) -> None:
+    """让该用户所有已签发的旧 cookie 立即失效（改密/重置/停用/软删时调用）。"""
+    user.token_version = (user.token_version or 0) + 1
 
 
 # --------------------------- 登录节流 ---------------------------
@@ -166,15 +211,21 @@ def clear_failures(key: str) -> None:
 
 __all__ = [
     "COOKIE_NAME",
+    "ROLE_ADMIN",
+    "ROLE_USER",
     "hash_password",
     "new_salt",
     "verify_password",
     "utcnow",
-    "first_user",
+    "new_admin_password",
+    "count_users",
+    "get_by_username",
+    "dummy_user",
     "read_secret",
     "get_secret",
     "issue_token",
     "verify_token",
+    "bump_token_version",
     "throttle_remaining",
     "record_failure",
     "clear_failures",

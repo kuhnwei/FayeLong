@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import STATUS_PENDING, SUPPORTED_EXT
 from app.core.paths import clips_dir, media_dir
-from app.models import Category, Media, Note, Sentence
+from app.models import Category, Media, Note, Sentence, SentenceMark
 from app.services import jobs as jobs_service
 from app.services import media as media_service
 from app.services import study as study_service
@@ -192,15 +192,30 @@ def count_sentences(db: Session, media_id: int) -> int:
     )
 
 
-def notes_of(db: Session, media_id: int) -> list[tuple[Note, Sentence]]:
-    """该媒体下所有「已有笔记」的句子（按句序）。"""
+def notes_of(db: Session, media_id: int, user_id: int) -> list[tuple[Note, Sentence]]:
+    """该媒体下当前用户所有「已有笔记」的句子（按句序）。"""
     return (
         db.query(Note, Sentence)
         .join(Sentence, Sentence.id == Note.sentence_id)
-        .filter(Sentence.media_id == media_id)
+        .filter(Sentence.media_id == media_id, Note.user_id == user_id)
         .order_by(Sentence.idx)
         .all()
     )
+
+
+def marks_map(db: Session, user_id: int, sentence_ids: list[int]) -> dict[int, str]:
+    """批量取某用户在这些句子上的「易听错」标记 ranges（key = sentence_id）。"""
+    if not sentence_ids:
+        return {}
+    rows = (
+        db.query(SentenceMark.sentence_id, SentenceMark.ranges)
+        .filter(
+            SentenceMark.user_id == user_id,
+            SentenceMark.sentence_id.in_(sentence_ids),
+        )
+        .all()
+    )
+    return {sid: ranges for sid, ranges in rows}
 
 
 # --------------------------- 登记 / 落盘 ---------------------------
@@ -777,12 +792,13 @@ def notes_markdown(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def export_notes_markdown(db: Session, media_id: int) -> tuple[str, str]:
+def export_notes_markdown(db: Session, media_id: int, user_id: int) -> tuple[str, str]:
     """导出某媒体的句子笔记（正文 + 文件名）。
 
     Args:
         db: 会话。
         media_id: 媒体 id。
+        user_id: 只导出该用户的笔记（多用户隔离）。
 
     Returns:
         `(markdown 正文, 下载文件名)`。文件名已剔除 Windows 非法字符。
@@ -791,8 +807,8 @@ def export_notes_markdown(db: Session, media_id: int) -> tuple[str, str]:
         NotFoundError: 媒体不存在。
     """
     media = get_media_or_404(db, media_id)
-    rows = notes_of(db, media_id)
-    stats = study_service.media_stats(db, media_id)
+    rows = notes_of(db, media_id, user_id)
+    stats = study_service.media_stats(db, media_id, user_id)
     sentence_count = count_sentences(db, media_id)
     body = notes_markdown(media, rows, stats, sentence_count)
 

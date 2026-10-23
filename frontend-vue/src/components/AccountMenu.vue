@@ -4,10 +4,12 @@
  * 改密码弹窗 + 退出登录 + 点击别处收起。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { changePassword, getAuthStatus, logout } from '../api/client'
 
 const queryClient = useQueryClient()
+const router = useRouter()
 const open = ref(false)
 const changing = ref(false)
 const current = ref('')
@@ -20,6 +22,13 @@ const { data } = useQuery({
   queryFn: getAuthStatus,
   staleTime: 0,
 })
+
+const isAdmin = computed(() => data.value?.role === 'admin')
+
+const goAdminUsers = () => {
+  open.value = false
+  router.push('/admin/users')
+}
 
 const signOut = useMutation({
   mutationFn: logout,
@@ -81,6 +90,12 @@ function save() {
       @click="open = !open"
     >
       <span class="max-w-[6rem] truncate sm:max-w-[10rem]">{{ data?.username ?? '账号' }}</span>
+      <span
+        v-if="isAdmin"
+        class="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+      >
+        管理员
+      </span>
       <span class="text-slate-400">▾</span>
     </button>
 
@@ -130,6 +145,14 @@ function save() {
       </div>
 
       <div v-else class="space-y-1">
+        <button
+          v-if="isAdmin"
+          type="button"
+          class="w-full rounded-lg px-2.5 py-2 text-left text-[12px] text-slate-600 transition-colors hover:bg-slate-50"
+          @click="goAdminUsers"
+        >
+          用户管理
+        </button>
         <button
           type="button"
           class="w-full rounded-lg px-2.5 py-2 text-left text-[12px] text-slate-600 transition-colors hover:bg-slate-50"

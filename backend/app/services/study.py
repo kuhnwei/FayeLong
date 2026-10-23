@@ -47,23 +47,31 @@ def _fold(rows: list[Attempt]) -> SentenceStat:
     return stat
 
 
-def sentence_stats(db: Session, sentence_id: int) -> SentenceStat:
-    """单句统计（提交听写后即时返回，避免前端再拉一次详情）。"""
+def sentence_stats(db: Session, sentence_id: int, user_id: int) -> SentenceStat:
+    """单句统计（提交听写后即时返回，避免前端再拉一次详情）。
+
+    Args:
+        user_id: 只统计该用户的听写记录（多用户隔离）。
+    """
     rows = (
         db.query(Attempt)
-        .filter(Attempt.sentence_id == sentence_id)
+        .filter(Attempt.sentence_id == sentence_id, Attempt.user_id == user_id)
         .order_by(Attempt.id)
         .all()
     )
     return _fold(rows)
 
 
-def media_stats(db: Session, media_id: int) -> dict[int, SentenceStat]:
-    """某个媒体下所有句子的统计（key = sentence_id，无记录的句不出现在结果里）。"""
+def media_stats(db: Session, media_id: int, user_id: int) -> dict[int, SentenceStat]:
+    """某个媒体下所有句子的统计（key = sentence_id，无记录的句不出现在结果里）。
+
+    Args:
+        user_id: 只统计该用户的听写记录（多用户隔离）。
+    """
     rows = (
         db.query(Attempt)
         .join(Sentence, Sentence.id == Attempt.sentence_id)
-        .filter(Sentence.media_id == media_id)
+        .filter(Sentence.media_id == media_id, Attempt.user_id == user_id)
         .order_by(Attempt.id)
         .all()
     )

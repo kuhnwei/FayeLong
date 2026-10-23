@@ -175,11 +175,12 @@ def clean_db():
 
 
 @pytest.fixture()
-def db_session():
-    """提供一个指向**临时库**的 SQLAlchemy 会话（供 P0-5/P0-6 写库用例）。
+def db_session(app_client):
+    """提供一个指向**临时库**的 SQLAlchemy 会话（供写库用例）。
 
-    表结构由 lifespan 的 `init_db()` 建好；本 fixture 只负责开/关会话。
-    用例自行负责清理其写入的行（或依赖库被丢弃）。
+    依赖 `app_client` 以触发 lifespan 的 `init_db()` 建好表结构（否则单独跑
+    某些只依赖 `db_session` 的用例时会遇到「no such table」）。本 fixture 只负责
+    开/关会话；用例自行负责清理其写入的行（或依赖库被丢弃）。
     """
     from app.db import SessionLocal
 
@@ -190,28 +191,87 @@ def db_session():
         db.close()
 
 
-@pytest.fixture()
-def authed_client(client):
-    """带**有效会话 cookie** 的 `TestClient`（用于受登录门禁保护的端点）。
+def _make_user(role: str = "user", *, is_active: bool = True) -> int:
+    """在临时库直接落库建一个用户，返回其 id（供铸牌 fixture 复用）。
 
-    做法：直接签发一个 token 塞进 cookie，走的是与真实登录完全相同的签名路径
-    （`auth_service.issue_token`），因此守卫中间件会当真会话处理 ——
-    不需要建账号、不需要密码，也不会因为别的用例清过 `users` 表而失效。
+    Args:
+        role: `user` / `admin`。
+        is_active: 是否可用（False 用于「禁用账号」用例）。
 
     Notes:
-        用法与 `client` 一致；用例结束后清掉 cookie，避免污染共享的 session 级
-        `TestClient`（其它模块的用例会断言「未登录 → 401」）。
+        用户名用随机后缀，避免多个用例共用一个 session 级库时唯一约束冲突。
     """
+    import secrets
+
+    from app.db import SessionLocal
+    from app.models import User
+    from app.services import auth as auth_service
+
+    db = SessionLocal()
+    try:
+        salt = auth_service.new_salt()
+        user = User(
+            username=f"t-{role}-{secrets.token_hex(4)}",
+            salt=salt,
+            iterations=200_000,
+            password_hash=auth_service.hash_password("test-password-123", salt, 200_000),
+            role=role,
+            is_active=is_active,
+            token_version=0,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user.id
+    finally:
+        db.close()
+
+
+def _mint_session(client, uid: int) -> None:
+    """给 `client` 铸一个指向 `uid` 的有效会话 cookie（版本号按 0 签发）。"""
     from app.db import SessionLocal
     from app.services import auth as auth_service
 
     db = SessionLocal()
     try:
         secret = auth_service.get_secret(db)
+        token = auth_service.issue_token(uid, secret, 600, 0)
     finally:
         db.close()
-    token = auth_service.issue_token(1, secret, 600)
     client.cookies.set(auth_service.COOKIE_NAME, token)
+
+
+@pytest.fixture()
+def authed_uid() -> int:
+    """当前「普通用户」的 id（供需要给学习数据落 `user_id` 的用例复用）。"""
+    return _make_user("user")
+
+
+@pytest.fixture()
+def authed_client(client, authed_uid):
+    """带**有效会话 cookie** 的 `TestClient`（普通用户，用于受登录门禁保护的端点）。
+
+    做法：真实建一行 `role='user'` 的用户，再用 `issue_token` 铸牌塞进 cookie ——
+    守卫中间件现在会回查 `User`（校验存在 + `is_active` + `token_version`），
+    所以必须落库，不能像旧版那样只签 `uid=1` 不建行。
+
+    Notes:
+        用法与 `client` 一致；用例结束后清掉 cookie，避免污染共享的 session 级
+        `TestClient`（其它模块的用例会断言「未登录 → 401」）。
+        若用例要给学习数据落 `user_id`，请同时依赖 `authed_uid` 拿同一用户 id。
+    """
+    _mint_session(client, authed_uid)
+    try:
+        yield client
+    finally:
+        client.cookies.clear()
+
+
+@pytest.fixture()
+def admin_client(client):
+    """带**管理员会话 cookie** 的 `TestClient`（用于仅管理员可写的端点）。"""
+    uid = _make_user("admin")
+    _mint_session(client, uid)
     try:
         yield client
     finally:

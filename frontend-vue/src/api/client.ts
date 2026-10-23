@@ -81,6 +81,12 @@ export type MediaNoteItem = Schemas['MediaNoteItem']
 export type MediaNotesResponse = Schemas['MediaNotesResponse']
 export type StatsResponse = Schemas['StatsOut']
 export type AuthStatus = Schemas['AuthStatus']
+export type AdminUserList = Schemas['AdminUserList']
+export type AdminUserOut = Schemas['AdminUserOut']
+export type AdminUserSummary = Schemas['AdminUserSummary']
+export type AdminUserCreate = Schemas['AdminUserCreate']
+export type AdminUserUpdate = Schemas['AdminUserUpdate']
+export type AdminPasswordReset = Schemas['AdminPasswordReset']
 
 /** 听写比对展示类型（DiffToken / DiffTokenType / DiffResultData）——见 `../types/diff`。 */
 export type { DiffToken, DiffResultData, DiffTokenType } from '../types/diff'
@@ -253,6 +259,13 @@ export const updateSentence = (id: number, patch: SentencePatch) =>
   request<MediaDetail>(`/sentences/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
+  })
+
+/** 整体替换当前用户在该句上的「易听错」标记（个人数据，v1.16.2 起独立端点）。 */
+export const updateSentenceMarks = (id: number, marks: number[][]) =>
+  request<{ sentence_id: number; marks: number[][] }>(`/sentences/${id}/marks`, {
+    method: 'PUT',
+    body: JSON.stringify({ marks }),
   })
 
 export const splitSentence = (
@@ -446,6 +459,45 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
   request<AuthStatus>('/auth/password', {
     method: 'POST',
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })
+
+// --------------------------- 管理员（v1.16.2） ---------------------------
+
+/** 用户列表（含每人的学习统计摘要，供对比）。 */
+export const listAdminUsers = () => request<AdminUserList>('/admin/users')
+
+/** 多用户学习状态对比（与 listAdminUsers 同口径）。 */
+export const compareAdminUsers = () => request<AdminUserList>('/admin/users/compare')
+
+/** 单个用户的学习统计。 */
+export const getAdminUserStats = (userId: number) =>
+  request<AdminUserSummary>(`/admin/users/${userId}/stats`)
+
+/** 创建用户。 */
+export const createAdminUser = (payload: AdminUserCreate) =>
+  request<AdminUserOut>('/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+/** 启停 / 改角色。 */
+export const updateAdminUser = (userId: number, payload: AdminUserUpdate) =>
+  request<AdminUserOut>(`/admin/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+
+/** 重置密码。 */
+export const resetAdminUserPassword = (userId: number, newPassword: string) =>
+  request<{ id: number; username: string; reset: boolean }>(
+    `/admin/users/${userId}/reset-password`,
+    { method: 'POST', body: JSON.stringify({ new_password: newPassword }) }
+  )
+
+/** 软删除用户（数据保留）。 */
+export const deleteAdminUser = (userId: number) =>
+  request<{ id: number; username: string; deleted: boolean }>(`/admin/users/${userId}`, {
+    method: 'DELETE',
   })
 
 // --------------------------- 开发期调试探针 ---------------------------

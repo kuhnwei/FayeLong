@@ -267,12 +267,13 @@ def _question_public(question: Question) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def create_session(db: Session, paper_id: int) -> PracticeSession:
+def create_session(db: Session, paper_id: int, user_id: int) -> PracticeSession:
     """开始一次作答。
 
     Args:
         db: 会话。
         paper_id: 试卷 id。
+        user_id: 作答用户 id（多用户隔离）。
 
     Returns:
         新建的 `PracticeSession`（`status='in_progress'`）。
@@ -283,7 +284,9 @@ def create_session(db: Session, paper_id: int) -> PracticeSession:
     paper = db.get(Paper, int(paper_id))
     if paper is None:
         raise PaperNotFoundError(f"试卷 {paper_id} 不存在")
-    session = PracticeSession(paper_id=paper.id, status=STATUS_IN_PROGRESS, time_spent_sec=0)
+    session = PracticeSession(
+        paper_id=paper.id, user_id=user_id, status=STATUS_IN_PROGRESS, time_spent_sec=0
+    )
     db.add(session)
     db.commit()
     db.refresh(session)

@@ -17,6 +17,7 @@ import {
   PROCESSING_STATUSES,
   batchMoveCategory,
   deleteMedia,
+  getAuthStatus,
   getHealth,
   getStats,
   importFromInbox,
@@ -61,6 +62,14 @@ interface UploadTask {
 const queryClient = useQueryClient()
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const player = usePlayer()
+
+// 管理员判断：普通用户只读浏览/学习，上传、导入、批量管理、分类管理仅管理员可见。
+const { data: authData } = useQuery({
+  queryKey: ['auth', 'status'],
+  queryFn: getAuthStatus,
+  staleTime: 0,
+})
+const isAdmin = computed(() => authData.value?.role === 'admin')
 
 const uploads = ref<UploadTask[]>([])
 const dragging = ref(false)
@@ -345,7 +354,7 @@ function exitBatchMode() {
         <p class="mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-ink-2">
           导入英语音频（视频仅取音轨），自动转码 → 识别 → 翻译 → 切片，一句一句地练。
         </p>
-        <div class="mt-4 flex flex-wrap items-center gap-2">
+        <div v-if="isAdmin" class="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
           class="flex items-center gap-1.5 rounded-full border-2 border-ink bg-white px-4 py-2.5 text-[13px] font-bold text-ink transition-transform hover:-translate-y-px hover:shadow-[0_3px_0_var(--ink)] active:translate-y-[2px] active:shadow-none"
@@ -391,7 +400,7 @@ function exitBatchMode() {
     </div>
 
     <!-- 拖拽上传区 + 按类导入 -->
-    <div class="space-y-2">
+    <div v-if="isAdmin" class="space-y-2">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <span class="text-[12px] text-ink-2">
           上传时可指定分类：本轮所选文件统一归入该分类
@@ -470,7 +479,7 @@ function exitBatchMode() {
     </div>
 
     <!-- 素材目录导入面板 -->
-    <div v-if="inboxOpen" class="rounded-xl border border-ink bg-white p-5">
+    <div v-if="isAdmin && inboxOpen" class="rounded-xl border border-ink bg-white p-5">
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
           <h3 class="text-sm font-medium text-ink">从素材目录导入</h3>
@@ -614,6 +623,7 @@ function exitBatchMode() {
               </select>
             </div>
             <button
+              v-if="isAdmin"
               type="button"
               :aria-pressed="batchMode"
               :class="[
@@ -637,6 +647,7 @@ function exitBatchMode() {
             :uncategorized-count="categoriesData?.uncategorized_count ?? 0"
             :loading="categoriesLoading"
             :selected="categoryFilter"
+            :show-manage="isAdmin"
             @select="
               (value) => {
                 categoryFilter = value
@@ -763,6 +774,7 @@ function exitBatchMode() {
           :category-name="categoryNameFor(media)"
           :selectable="batchMode"
           :checked="batchIds.includes(media.id)"
+          :manage="isAdmin"
           :busy="
             deleteMutation.isPending.value || renameMutation.isPending.value || retryMutation.isPending.value
           "
@@ -777,7 +789,7 @@ function exitBatchMode() {
 
     <!-- 管理分类面板 -->
     <CategoryManager
-      v-if="managerOpen"
+      v-if="isAdmin && managerOpen"
       :items="categories"
       @close="managerOpen = false"
       @changed="refresh"

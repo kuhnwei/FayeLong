@@ -13,6 +13,10 @@ class AuthStatus(BaseModel):
     username: str | None = None
     #: 密码最短长度由后端下发，避免前后端各写一份规则而漂移
     min_password_length: int = 8
+    #: 当前登录用户 id / 角色 / 是否可用（未登录时均为 None）
+    id: int | None = None
+    role: str | None = None
+    is_active: bool | None = None
 
 
 class Credentials(BaseModel):

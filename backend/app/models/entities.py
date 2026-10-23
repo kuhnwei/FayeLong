@@ -112,25 +112,71 @@ class Attempt(Base):
     accuracy: Mapped[float] = mapped_column(Float, default=0.0)
     is_correct: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    #: 归属用户。nullable=True 是为了让「alembic 权威迁移」与「_ensure 双轨自愈」
+    #: 收敛到同一结构（SQLite 的 ALTER 只能加可空列）；应用层写入时必填。
+    #: ⚠️ 声明在**末尾**：ALTER ADD COLUMN 只能加列尾，放末尾才能让两轨列顺序一致。
+    #: ⚠️ 外键**不带 ondelete**：SQLite 的 ALTER 无法表达 ON DELETE，且本系统对
+    #: 用户是软删除（is_active=false），物理删除不会发生；NO ACTION 反而更安全。
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
     sentence: Mapped[Sentence] = relationship(back_populates="attempts")
 
 
+class SentenceMark(Base):
+    """句子「易听错」标记（每用户每句一份，v1.16.2 从 `sentences.marks` 拆出）。
+
+    旧版把个人标注写在共享的 `sentences.marks`（Text JSON 列）上，多用户会互相
+    覆盖。这里拆成独立表，`ranges` 沿用 `services/marks.py` 的 `dump()` 序列化
+    文本（JSON 数组，元素为闭区间 `[起始词序, 结束词序]`，0 基）。
+    """
+
+    __tablename__ = "sentence_marks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: 归属用户（外键不带 ondelete，理由见 Attempt.user_id）。
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    sentence_id: Mapped[int] = mapped_column(
+        ForeignKey("sentences.id", ondelete="CASCADE"), index=True
+    )
+    ranges: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
+
+    __table_args__ = (
+        # 同一用户对同一句只保留一份标记（upsert 语义）。
+        Index("uq_sentence_marks_user_sentence", "user_id", "sentence_id", unique=True),
+    )
+
+
 class Note(Base):
-    """句子笔记（每句至多一条）。"""
+    """句子笔记（每用户每句至多一条）。"""
 
     __tablename__ = "notes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: 多用户后「每句一条」改为「每用户每句一条」，唯一性由下方联合唯一索引保证。
     sentence_id: Mapped[int] = mapped_column(
-        ForeignKey("sentences.id", ondelete="CASCADE"), unique=True, index=True
+        ForeignKey("sentences.id", ondelete="CASCADE"), index=True
     )
     content: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+    #: 归属用户（声明在末尾、外键不带 ondelete，理由见 Attempt.user_id）。
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
     sentence: Mapped[Sentence] = relationship(back_populates="note")
+
+    __table_args__ = (
+        # 同一用户对同一句只保留一条笔记（取代旧版的 sentence_id 单列唯一）。
+        # 用显式唯一索引而非 UniqueConstraint：SQLite 的 ALTER 无法加表约束，
+        # 显式索引可以 DROP/CREATE，从而被 alembic 与 _ensure 双轨表达。
+        Index("uq_notes_user_sentence", "user_id", "sentence_id", unique=True),
+    )
 
 
 class Vocab(Base):
@@ -148,6 +194,9 @@ class Vocab(Base):
     context: Mapped[str | None] = mapped_column(Text, nullable=True)
     mastered: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    #: 归属用户（声明在末尾，理由见 Attempt.user_id）。刻意**不加外键**（与
+    #: media_id / sentence_id 同理由：生词在素材被删后仍保留，也避免删用户的歧义）。
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
 
 class Setting(Base):
@@ -160,11 +209,15 @@ class Setting(Base):
 
 
 class User(Base):
-    """站点账号（v1.12 登录门禁）。
+    """站点账号（v1.16.2 起多用户）。
 
-    当前是**单账号门禁**：本表通常只有一行 —— 全局共用一份学习数据。
     不存明文密码，只存 PBKDF2 派生值 + 盐 + 迭代次数（迭代次数落库，
     将来调高默认值不会让老账号失效）。
+
+    * `role`：`user` / `admin`。首启 `setup` 建的是 admin；普通用户由 admin 创建。
+    * `is_active`：软删除/停用标记（False = 禁止登录，数据保留）。
+    * `token_version`：会话吊销版本号。改密 / 重置 / 停用 / 软删时 +1，
+      旧 cookie 携带的旧版本号会在守卫处被拒，从而实现「即时失效」。
     """
 
     __tablename__ = "users"
@@ -176,6 +229,16 @@ class User(Base):
     iterations: Mapped[int] = mapped_column(Integer, default=200_000)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: 角色：user / admin。server_default 用字符串字面量（SQLite 无布尔/枚举）。
+    role: Mapped[str] = mapped_column(
+        String(16), default="user", server_default=text("'user'")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("1")
+    )
+    token_version: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
 
 
 class Translation(Base):
@@ -486,6 +549,10 @@ class PracticeSession(Base):
     #: in_progress | grading | graded | degraded（见类 docstring）
     status: Mapped[str] = mapped_column(String(16), default="in_progress")
     time_spent_sec: Mapped[int] = mapped_column(Integer, default=0)
+    #: 归属用户（声明在末尾、外键不带 ondelete，理由见 Attempt.user_id；IELTS 作答是个人数据）。
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
     responses: Mapped[list["Response"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"

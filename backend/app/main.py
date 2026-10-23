@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api import (
+    admin,
     attempts,
     auth as auth_api,
     categories,
@@ -35,7 +36,9 @@ from app.core.config import ensure_dirs, settings, static_dir
 from app.core.logging import setup_logging
 from app.core.tasks import shutdown as shutdown_tasks
 from app.db import SessionLocal, init_db
+from app.models import User
 from app.services import auth as auth_service
+from app.services import bootstrap as bootstrap_service
 from app.services import jobs as jobs_service
 from app.services.media import requeue_unfinished
 
@@ -150,6 +153,7 @@ async def lifespan(app: FastAPI):
     ensure_dirs()
     setup_logging()
     init_db()
+    bootstrap_service.ensure_admin_user()  # 迁移后老库：无 admin 则自动建（随机密码打印）
     requeue_unfinished()  # 重启后自动续做未完成的媒体任务
     maybe_start_inproc_worker()  # auto/on 时降级为进程内执行者
     yield
@@ -208,13 +212,23 @@ async def guard_api(request: Request, call_next):
 
     db = SessionLocal()
     try:
-        # 只读密钥，避免未登录请求产生写操作
+        # 只读密钥，避免未登录请求产生写操作；再验签 + 回查用户。
         secret = auth_service.read_secret(db)
+        parsed = auth_service.verify_token(token, secret)
+        if parsed is None:
+            return _unauthorized()
+        uid, ver = parsed
+        user = db.get(User, uid)
+        # 用户不存在 / 已禁用 / token 版本不符 → 一律 401（踢下线，不泄露具体原因）。
+        if user is None or not user.is_active or (user.token_version or 0) != ver:
+            return _unauthorized()
+        # 注入身份供下游依赖复用。存普通值而非 ORM 对象 —— 该会话马上关闭，
+        # detached 实例有坑（见 get_current_user 依赖的复用逻辑）。
+        request.state.user_id = uid
+        request.state.user_role = user.role
     finally:
         db.close()
 
-    if auth_service.verify_token(token, secret) is None:
-        return _unauthorized()
     return await call_next(request)
 
 
@@ -234,6 +248,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 app.include_router(health.router)
 app.include_router(auth_api.router)
+app.include_router(admin.router)
 app.include_router(question_types_api.router)
 app.include_router(papers.router)
 app.include_router(sessions.router)

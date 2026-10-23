@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
 from app.core.config import (
     STATUS_ASR,
     STATUS_CLIPPING,
@@ -22,7 +23,7 @@ from app.core.config import (
     STATUS_TRANSLATING,
 )
 from app.db import get_db
-from app.models import Attempt, Media, Note, Sentence, Vocab
+from app.models import Attempt, Media, Note, Sentence, User, Vocab
 from app.schemas.stats import (
     AttemptStatsOut,
     CourseProgressOut,
@@ -52,8 +53,11 @@ def _count(db: Session, model) -> int:
 
 
 @router.get("", response_model=StatsOut)
-def get_stats(db: Session = Depends(get_db)) -> StatsOut:
-    """返回全局学习概览。"""
+def get_stats(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StatsOut:
+    """返回当前用户的全局学习概览（媒体/句子是共享内容，其余按用户隔离）。"""
     media_total = _count(db, Media)
     processing = sum(
         (db.query(func.count(Media.id)).filter(Media.status == s).scalar() or 0)
@@ -62,18 +66,28 @@ def get_stats(db: Session = Depends(get_db)) -> StatsOut:
     failed = db.query(func.count(Media.id)).filter(Media.status == STATUS_FAILED).scalar() or 0
     done = db.query(func.count(Media.id)).filter(Media.status == STATUS_DONE).scalar() or 0
 
-    vocab_total = _count(db, Vocab)
+    vocab_total = (
+        db.query(func.count(Vocab.id)).filter(Vocab.user_id == user.id).scalar() or 0
+    )
     vocab_mastered = (
-        db.query(func.count(Vocab.id)).filter(Vocab.mastered.is_(True)).scalar() or 0
+        db.query(func.count(Vocab.id))
+        .filter(Vocab.user_id == user.id, Vocab.mastered.is_(True))
+        .scalar()
+        or 0
     )
 
-    attempts_total = _count(db, Attempt)
+    attempts_total = (
+        db.query(func.count(Attempt.id)).filter(Attempt.user_id == user.id).scalar() or 0
+    )
     attempted_sentences = (
-        db.query(func.count(func.distinct(Attempt.sentence_id))).scalar() or 0
+        db.query(func.count(func.distinct(Attempt.sentence_id)))
+        .filter(Attempt.user_id == user.id)
+        .scalar()
+        or 0
     )
     mastered_sentences = (
         db.query(func.count(func.distinct(Attempt.sentence_id)))
-        .filter(Attempt.is_correct.is_(True))
+        .filter(Attempt.user_id == user.id, Attempt.is_correct.is_(True))
         .scalar()
         or 0
     )
@@ -86,7 +100,9 @@ def get_stats(db: Session = Depends(get_db)) -> StatsOut:
             failed=failed,
         ),
         sentences=_count(db, Sentence),
-        notes=_count(db, Note),
+        notes=(
+            db.query(func.count(Note.id)).filter(Note.user_id == user.id).scalar() or 0
+        ),
         vocab=VocabStatsOut(total=vocab_total, mastered=vocab_mastered),
         attempts=AttemptStatsOut(
             total=attempts_total,
@@ -97,7 +113,11 @@ def get_stats(db: Session = Depends(get_db)) -> StatsOut:
 
 
 @router.get("/overview", response_model=OverviewOut)
-def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
+def get_overview(
+    days: int = 14,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OverviewOut:
     """统计页 14 天学习概览（ARCH §6.1）。
 
     口径：
@@ -107,6 +127,7 @@ def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
     - `courses.pct` 0–100 float，`total=0` 时 0；按 pct desc 取前 10；
     - `recent` 按 `created_at desc` 取 6 条；
     - 空库返回 HTTP 200 全零结构（非 404）。
+    - 多用户：所有个人口径（听写/生词/最近）按当前用户 `user_id` 隔离。
     """
     days = max(1, min(days, 365))
     today = date.today()
@@ -119,6 +140,7 @@ def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
             func.count(Attempt.id).label("attempts"),
             func.avg(Attempt.accuracy).label("accuracy"),
         )
+        .filter(Attempt.user_id == user.id)
         .group_by("day")
         .all()
     )
@@ -130,6 +152,7 @@ def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
             func.date(Vocab.created_at, "localtime").label("day"),
             func.count(Vocab.id).label("n"),
         )
+        .filter(Vocab.user_id == user.id)
         .group_by("day")
         .all()
     )
@@ -170,7 +193,7 @@ def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
         else:
             break
 
-    # ---- 课程完成度：按 media 分组，去重统计 ----
+    # ---- 课程完成度：按 media 分组，去重统计（outerjoin 限定当前用户） ----
     course_rows = (
         db.query(
             Media.id.label("media_id"),
@@ -179,7 +202,10 @@ def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
             func.count(func.distinct(Attempt.sentence_id)).label("attempted"),
         )
         .outerjoin(Sentence, Sentence.media_id == Media.id)
-        .outerjoin(Attempt, Attempt.sentence_id == Sentence.id)
+        .outerjoin(
+            Attempt,
+            (Attempt.sentence_id == Sentence.id) & (Attempt.user_id == user.id),
+        )
         .group_by(Media.id)
         .all()
     )
@@ -204,6 +230,7 @@ def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
     recent_rows = (
         db.query(Attempt, Sentence.text_en)
         .join(Sentence, Attempt.sentence_id == Sentence.id)
+        .filter(Attempt.user_id == user.id)
         .order_by(Attempt.created_at.desc())
         .limit(6)
         .all()
@@ -218,9 +245,14 @@ def get_overview(days: int = 14, db: Session = Depends(get_db)) -> OverviewOut:
     ]
 
     # ---- 生词两态（Donut 数据源） ----
-    vocab_total = _count(db, Vocab)
+    vocab_total = (
+        db.query(func.count(Vocab.id)).filter(Vocab.user_id == user.id).scalar() or 0
+    )
     vocab_mastered = (
-        db.query(func.count(Vocab.id)).filter(Vocab.mastered.is_(True)).scalar() or 0
+        db.query(func.count(Vocab.id))
+        .filter(Vocab.user_id == user.id, Vocab.mastered.is_(True))
+        .scalar()
+        or 0
     )
 
     return OverviewOut(

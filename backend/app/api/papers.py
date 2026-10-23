@@ -18,7 +18,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
 from app.db import get_db
+from app.models import User
 from app.schemas.papers import PaperDetailOut, PaperListResponse, PaperOut
 from app.schemas.sessions import SessionOut
 from app.services import papers as papers_service
@@ -55,14 +57,18 @@ def get_paper(paper_id: int, db: Session = Depends(get_db)) -> PaperDetailOut:
 
 
 @router.post("/{paper_id}/sessions", response_model=SessionOut, status_code=201)
-def create_session(paper_id: int, db: Session = Depends(get_db)) -> SessionOut:
+def create_session(
+    paper_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SessionOut:
     """开始一次作答（`status='in_progress'`）。
 
     Raises:
         HTTPException: 404 —— 试卷不存在。
     """
     try:
-        session = papers_service.create_session(db, paper_id)
+        session = papers_service.create_session(db, paper_id, user.id)
     except papers_service.PaperNotFoundError:
         raise HTTPException(status_code=404, detail="试卷不存在") from None
     return SessionOut(**papers_service.session_summary(db, session))

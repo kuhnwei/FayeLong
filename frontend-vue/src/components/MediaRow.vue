@@ -21,9 +21,11 @@ interface Props {
   busy: boolean
   /** 布局变体：row = 横排行（默认），card = 卡片网格（封面在上，移动端自动横排） */
   variant?: 'row' | 'card'
+  /** 是否显示管理操作（删除/重试/重命名）；普通用户隐藏（v1.16.2） */
+  manage?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { manage: true })
 
 const emit = defineEmits<{
   (e: 'toggle-select', checked: boolean): void
@@ -204,7 +206,7 @@ function onToggle(event: Event) {
       </RouterLink>
 
       <button
-        v-if="media.status === 'failed'"
+        v-if="props.manage && media.status === 'failed'"
         type="button"
         :disabled="busy"
         title="重新处理"
@@ -215,6 +217,7 @@ function onToggle(event: Event) {
       </button>
 
       <button
+        v-if="props.manage"
         type="button"
         title="重命名"
         class="rounded-lg p-2 text-ink-3 transition-colors hover:bg-lemon-100 hover:text-ink"
@@ -224,6 +227,7 @@ function onToggle(event: Event) {
       </button>
 
       <button
+        v-if="props.manage"
         type="button"
         :disabled="busy"
         title="删除"
@@ -361,7 +365,7 @@ function onToggle(event: Event) {
         </RouterLink>
 
         <button
-          v-if="media.status === 'failed'"
+          v-if="props.manage && media.status === 'failed'"
           type="button"
           :disabled="busy"
           title="重新处理"
@@ -372,6 +376,7 @@ function onToggle(event: Event) {
         </button>
 
         <button
+          v-if="props.manage"
           type="button"
           title="重命名"
           class="rounded-lg p-1.5 text-ink-3 transition-colors hover:bg-lemon-100 hover:text-ink"
@@ -381,6 +386,7 @@ function onToggle(event: Event) {
         </button>
 
         <button
+          v-if="props.manage"
           type="button"
           :disabled="busy"
           title="删除"

@@ -13,7 +13,10 @@
  *   - `header` 里必须保留 BackendStatus（含「后端」文本）与 AccountMenu（含 `▾` 按钮）
  *   - 桌面（≥md）导航文本可见（skeleton 在 1280px 按文本定位）；移动端（<sm）收成图标
  */
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useQuery } from '@tanstack/vue-query'
+import { getAuthStatus } from '../api/client'
 import AccountMenu from './AccountMenu.vue'
 import BackendStatus from './BackendStatus.vue'
 import PlayerBar from './PlayerBar.vue'
@@ -21,14 +24,23 @@ import PlayerBar from './PlayerBar.vue'
 const route = useRoute()
 const router = useRouter()
 
+const { data: auth } = useQuery({
+  queryKey: ['auth', 'status'],
+  queryFn: getAuthStatus,
+  staleTime: 0,
+})
+const isAdmin = computed(() => auth.value?.role === 'admin')
+
 interface NavItem {
-  key: 'library' | 'vocab' | 'practice' | 'stats'
+  key: 'library' | 'vocab' | 'practice' | 'stats' | 'admin-users' | 'admin-stats'
   /** vue-router 的路由 name（`router.hasRoute` 用 name 判断，不是 path） */
   name: string
   to: string
   label: string
   /** 手写内联 SVG（2px 圆头描边，currentColor 继承），顶栏图标与底栏 Tab 共用 */
   icon: string
+  /** 仅管理员可见（底栏不显示，顶栏按 isAdmin 过滤） */
+  adminOnly?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -60,15 +72,37 @@ const NAV_ITEMS: NavItem[] = [
     label: '统计',
     icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M7 20v-6"/><path d="M12 20V8"/><path d="M17 20v-4"/></svg>',
   },
+  {
+    key: 'admin-users',
+    name: 'admin-users',
+    to: '/admin/users',
+    label: '用户',
+    adminOnly: true,
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3.5 3.5 0 010 7"/><path d="M18 14c2.4 1 4 3 4 6"/></svg>',
+  },
+  {
+    key: 'admin-stats',
+    name: 'admin-stats',
+    to: '/admin/stats',
+    label: '对比',
+    adminOnly: true,
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M8 20v-8"/><path d="M12 20V5"/><path d="M16 20v-11"/></svg>',
+  },
 ]
 
+/** 顶栏可见项（admin 项仅在管理员登录时出现）；底栏始终只有 4 个主项。 */
+const visibleNav = computed(() => NAV_ITEMS.filter((i) => !i.adminOnly || isAdmin.value))
+const mainNav = computed(() => NAV_ITEMS.filter((i) => !i.adminOnly))
+
 /** 精确匹配：`/vocab` 与 `/vocab/practice` 各自独立点亮，绝不因前缀同时亮两个。 */
-function activeKey(): 'library' | 'vocab' | 'practice' | 'stats' | '' {
+function activeKey(): NavItem['key'] | '' {
   const p = route.path
   if (p === '/') return 'library'
   if (p === '/vocab') return 'vocab'
   if (p === '/vocab/practice') return 'practice'
   if (p === '/stats' || p.startsWith('/stats/')) return 'stats'
+  if (p.startsWith('/admin/users')) return 'admin-users'
+  if (p.startsWith('/admin/stats')) return 'admin-stats'
   return ''
 }
 
@@ -104,7 +138,7 @@ function tabClass(active: boolean): string {
         </h1>
 
         <nav class="flex min-w-0 items-center gap-0.5 sm:gap-1" aria-label="主导航">
-          <template v-for="item in NAV_ITEMS" :key="item.key">
+          <template v-for="item in visibleNav" :key="item.key">
             <RouterLink
               v-if="isAvailable(item)"
               :to="item.to"
@@ -144,7 +178,7 @@ function tabClass(active: boolean): string {
     <!-- ================= 移动端底部 Tab（真实 footer） ================= -->
     <footer class="shrink-0 border-t-[2px] border-ink bg-cream pb-[env(safe-area-inset-bottom)] md:hidden">
       <nav class="grid grid-cols-4 px-2 pt-1.5" aria-label="底部导航">
-        <template v-for="item in NAV_ITEMS" :key="item.key">
+        <template v-for="item in mainNav" :key="item.key">
           <RouterLink
             v-if="isAvailable(item)"
             :to="item.to"

@@ -35,10 +35,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user, require_admin
 from app.core.config import INBOX_DIR
 from app.core.files import file_response, guess_mime
 from app.db import SessionLocal, get_db
-from app.models import Media, Sentence
+from app.models import Media, Sentence, User
 from app.schemas.dictation import DictationSummary
 from app.schemas.media import (
     BatchCategoryRequest,
@@ -118,7 +119,12 @@ def serialize(media: Media, sentence_count: int = 0) -> MediaOut:
     )
 
 
-def sentence_out(media_id: int, sentence: Sentence, stat: SentenceStat | None = None) -> SentenceOut:
+def sentence_out(
+    media_id: int,
+    sentence: Sentence,
+    stat: SentenceStat | None = None,
+    marks_ranges: str = "",
+) -> SentenceOut:
     stats = (stat.as_dict() if stat else {})
     return SentenceOut(
         id=sentence.id,
@@ -133,19 +139,23 @@ def sentence_out(media_id: int, sentence: Sentence, stat: SentenceStat | None = 
             if sentence.clip_path and Path(sentence.clip_path).is_file()
             else None
         ),
-        marks=marks_service.load(sentence.marks),
+        marks=marks_service.load(marks_ranges),
         **stats,
     )
 
 
-def serialize_detail(db: Session, media: Media) -> MediaDetailOut:
+def serialize_detail(db: Session, media: Media, user_id: int) -> MediaDetailOut:
     """媒体详情（含句子列表与听写统计）——多处复用（媒体详情 / 句子编辑后刷新）。"""
     sentences = media_ops.sentences_of(db, media.id)
-    stats = study_service.media_stats(db, media.id)
+    stats = study_service.media_stats(db, media.id, user_id)
+    marks = media_ops.marks_map(db, user_id, [s.id for s in sentences])
     base = serialize(media, sentence_count=len(sentences))
     return MediaDetailOut(
         **base.model_dump(),
-        sentences=[sentence_out(media.id, s, stats.get(s.id)) for s in sentences],
+        sentences=[
+            sentence_out(media.id, s, stats.get(s.id), marks.get(s.id, ""))
+            for s in sentences
+        ],
         dictation=DictationSummary(
             **study_service.summary(len(sentences), stats)
         ),
@@ -159,9 +169,10 @@ def serialize_detail(db: Session, media: Media) -> MediaDetailOut:
 async def upload_media(
     file: UploadFile = File(...),
     category_id: int | None = Form(None),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MediaOut:
-    """上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。"""
+    """上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。仅管理员可上传。"""
     try:
         with _domain_errors():
             media = media_ops.register_upload(
@@ -175,8 +186,11 @@ async def upload_media(
 
 
 @router.get("/inbox", response_model=InboxResponse)
-def get_inbox(db: Session = Depends(get_db)) -> InboxResponse:
-    """列出收件箱里的素材（用户直接把文件放进该目录即可）。"""
+def get_inbox(
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> InboxResponse:
+    """列出收件箱里的素材（仅管理员；用户直接把文件放进该目录即可）。"""
     items = media_service.scan_inbox(db)
     return InboxResponse(
         inbox_dir=str(INBOX_DIR),
@@ -187,9 +201,10 @@ def get_inbox(db: Session = Depends(get_db)) -> InboxResponse:
 @router.post("/import", response_model=MediaListResponse, status_code=201)
 def import_from_inbox(
     payload: ImportRequest,
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MediaListResponse:
-    """从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。"""
+    """从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。仅管理员。"""
     with _domain_errors():
         created, _skipped = media_ops.import_inbox(db, payload.files, payload.category_id)
     items = [serialize(media) for media in created]
@@ -199,9 +214,10 @@ def import_from_inbox(
 @router.post("/batch-category")
 def batch_set_category(
     payload: BatchCategoryRequest,
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
-    """批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。
+    """批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。仅管理员。
 
     - `ids` 为空 → 400；`category_id` 指向的分类不存在 → 404。
     - `ids` 中不存在的媒体 id 不报错，收进 `missing` 回报，便于前端提示「N 个已失效」。
@@ -232,19 +248,24 @@ def list_media(
 
 
 @router.get("/{media_id}", response_model=MediaDetailOut)
-def get_media(media_id: int, db: Session = Depends(get_db)) -> MediaDetailOut:
+def get_media(
+    media_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MediaDetailOut:
     with _domain_errors():
         media = media_ops.get_media_or_404(db, media_id)
-    return serialize_detail(db, media)
+    return serialize_detail(db, media, user.id)
 
 
 @router.patch("/{media_id}", response_model=MediaOut)
 def update_media(
     media_id: int,
     payload: MediaUpdate,
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MediaOut:
-    # 区分「未传」与「传了 null」：null 表示移到「未分类」（Pydantic v2）
+    # 区分「未传」与「传了 null」：null 表示移到「未分类」（Pydantic v2）。仅管理员。
     with _domain_errors():
         media = media_ops.update_media(
             db,
@@ -257,23 +278,35 @@ def update_media(
 
 
 @router.post("/{media_id}/retry", response_model=MediaOut)
-def retry_media(media_id: int, db: Session = Depends(get_db)) -> MediaOut:
-    """重新处理（失败重试 / 手动重跑转码）。"""
+def retry_media(
+    media_id: int,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> MediaOut:
+    """重新处理（失败重试 / 手动重跑转码）。仅管理员。"""
     with _domain_errors():
         media = media_ops.retry_media(db, media_id)
     return serialize(media)
 
 
 @router.delete("/{media_id}", status_code=204)
-def delete_media(media_id: int, db: Session = Depends(get_db)) -> Response:
+def delete_media(
+    media_id: int,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
     with _domain_errors():
         media_ops.delete_with_files(db, media_id)
     return Response(status_code=204)
 
 
 @router.post("/{media_id}/retranscribe", response_model=MediaOut)
-def retranscribe_media(media_id: int, db: Session = Depends(get_db)) -> MediaOut:
-    """重新识别（保留已转码音频，只重跑 识别→翻译→切片）。
+def retranscribe_media(
+    media_id: int,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> MediaOut:
+    """重新识别（保留已转码音频，只重跑 识别→翻译→切片）。仅管理员。
 
     注意：会按识别结果重建句表，原有句子笔记与听写记录将一并清除。
     """
@@ -347,8 +380,12 @@ def get_clip(
 
 
 @router.delete("/{media_id}/clips", status_code=200)
-def clear_clips(media_id: int, db: Session = Depends(get_db)) -> dict:
-    """清理切片以回收磁盘（学习页仍可整段播放）。"""
+def clear_clips(
+    media_id: int,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """清理切片以回收磁盘（学习页仍可整段播放）。仅管理员。"""
     with _domain_errors():
         clips_dir_path = media_ops.clear_clips(db, media_id)
     return {"media_id": media_id, "cleared": True, "clips_dir": clips_dir_path}
@@ -358,12 +395,16 @@ def clear_clips(media_id: int, db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/{media_id}/notes", response_model=MediaNotesResponse)
-def list_media_notes(media_id: int, db: Session = Depends(get_db)) -> MediaNotesResponse:
+def list_media_notes(
+    media_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MediaNotesResponse:
     """某个媒体的句子笔记汇总（供学习页「笔记」面板）。"""
     with _domain_errors():
         media = media_ops.get_media_or_404(db, media_id)
-    rows = media_ops.notes_of(db, media_id)
-    stats = study_service.media_stats(db, media_id)
+    rows = media_ops.notes_of(db, media_id, user.id)
+    stats = study_service.media_stats(db, media_id, user.id)
     sentence_count = media_ops.count_sentences(db, media_id)
 
     items: list[MediaNoteItem] = []
@@ -393,10 +434,14 @@ def list_media_notes(media_id: int, db: Session = Depends(get_db)) -> MediaNotes
 
 
 @router.get("/{media_id}/notes/export")
-def export_media_notes(media_id: int, db: Session = Depends(get_db)) -> Response:
+def export_media_notes(
+    media_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
     """导出某个媒体的句子笔记为 Markdown 文件（浏览器下载）。"""
     with _domain_errors():
-        body, filename = media_ops.export_notes_markdown(db, media_id)
+        body, filename = media_ops.export_notes_markdown(db, media_id, user.id)
     return Response(
         content=body,
         media_type="text/markdown; charset=utf-8",

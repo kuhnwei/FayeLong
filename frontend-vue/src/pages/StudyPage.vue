@@ -34,6 +34,7 @@ import {
   retranscribeMedia,
   splitSentence,
   updateSentence,
+  updateSentenceMarks,
   type MediaDetail,
   type ProgressEventData,
   type SentenceItem,
@@ -174,13 +175,23 @@ const retranslateMutation = useMutation({
   },
 })
 
-// 原文「易听错」标记（v1.14）：整组覆盖保存，服务端归并区间后回传完整详情。
-// ⚠️ 只改 text_en 的 PATCH **不带 marks** → 后端按 `model_fields_set` 视为「未传」，
-//    不会动 marks（「改原文清空 marks」由后端在校对分支里显式处理，见 api/sentences.py）。
+// 原文「易听错」标记（v1.14）：整组覆盖保存，服务端归并区间后回传该句的新区间。
+// v1.16.2 起改走独立个人端点 `PUT /api/sentences/{id}/marks`（不再经 PATCH text_en）。
 const marksMutation = useMutation({
   mutationFn: (vars: { sid: number; marks: number[][] }) =>
-    updateSentence(vars.sid, { marks: vars.marks }),
-  onSuccess: (detail) => applyDetail(detail),
+    updateSentenceMarks(vars.sid, vars.marks),
+  onSuccess: (result) => {
+    // 局部更新缓存里该句的 marks（个人数据，不再整页刷 MediaDetail）。
+    queryClient.setQueryData<MediaDetail>(['media', id.value], (old) => {
+      if (!old) return old
+      return {
+        ...old,
+        sentences: (old.sentences ?? []).map((s) =>
+          s.id === result.sentence_id ? { ...s, marks: result.marks } : s,
+        ),
+      }
+    })
+  },
   onError: (e) => {
     notice.value = `标记保存失败：${(e as Error).message}`
   },

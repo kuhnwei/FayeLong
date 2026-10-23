@@ -17,9 +17,11 @@ interface Props {
   /** 服务端分类列表是否还在加载（首帧给占位，避免 chip 跳动） */
   loading?: boolean
   selected: CategoryFilter
+  /** 是否显示「管理分类」按钮（普通用户不显示，v1.16.2） */
+  showManage?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), { loading: false })
+const props = withDefaults(defineProps<Props>(), { loading: false, showManage: true })
 
 const emit = defineEmits<{
   (e: 'select', value: CategoryFilter): void
@@ -79,6 +81,7 @@ const entries = computed<{ key: string; label: string; count: number; value: Cat
     </button>
 
     <button
+      v-if="props.showManage"
       type="button"
       class="flex h-8 shrink-0 items-center gap-1 rounded-full border border-dashed border-ink-3 px-3 text-[12px] text-ink-2 transition-colors hover:border-ink hover:text-ink"
       @click="emit('manage')"

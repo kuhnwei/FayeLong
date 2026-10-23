@@ -18,8 +18,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
 from app.db import get_db
-from app.models import Media, Vocab
+from app.models import Media, User, Vocab
 from app.schemas.vocab import VocabCreate, VocabListResponse, VocabOut, VocabUpdate
 
 logger = logging.getLogger(__name__)
@@ -57,8 +58,8 @@ def serialize(row: Vocab, title: str | None = None, duplicated: bool = False) ->
     )
 
 
-def _fetch(db: Session, mastered: bool | None, q: str | None) -> list[Vocab]:
-    query = db.query(Vocab)
+def _fetch(db: Session, user_id: int, mastered: bool | None, q: str | None) -> list[Vocab]:
+    query = db.query(Vocab).filter(Vocab.user_id == user_id)
     if mastered is not None:
         query = query.filter(Vocab.mastered.is_(mastered))
     if q:
@@ -113,10 +114,11 @@ def _to_markdown(rows: list[Vocab], titles: dict[int, str]) -> str:
 @router.get("/export")
 def export_vocab(
     mastered: bool | None = Query(default=None),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     """导出整个生词本为 Markdown 文件。"""
-    rows = _fetch(db, mastered=mastered, q=None)
+    rows = _fetch(db, user.id, mastered=mastered, q=None)
     titles = _titles(db, [row.media_id or 0 for row in rows])
     body = _to_markdown(rows, titles)
     filename = f"生词本-{datetime.now():%Y%m%d-%H%M}.md"
@@ -136,9 +138,10 @@ def export_vocab(
 def list_vocab(
     mastered: bool | None = Query(default=None, description="按是否已掌握筛选"),
     q: str | None = Query(default=None, description="按单词 / 释义搜索"),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> VocabListResponse:
-    rows = _fetch(db, mastered=mastered, q=q)
+    rows = _fetch(db, user.id, mastered=mastered, q=q)
     titles = _titles(db, [row.media_id or 0 for row in rows])
     return VocabListResponse(
         items=[serialize(row, titles.get(row.media_id or -1)) for row in rows],
@@ -148,17 +151,25 @@ def list_vocab(
 
 
 @router.post("", response_model=VocabOut, status_code=201)
-def create_vocab(payload: VocabCreate, db: Session = Depends(get_db)) -> VocabOut:
+def create_vocab(
+    payload: VocabCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> VocabOut:
     """把一个生词加入生词本（同一词重复添加不会产生第二条）。"""
     word = (payload.word or "").strip()
     lemma = (payload.lemma or "").strip() or None
     if not word:
         raise HTTPException(status_code=400, detail="单词不能为空")
 
-    # 去重：按归一化键（原型优先）匹配，覆盖大小写差异。生词本规模很小，直接扫。
+    # 去重：按归一化键（原型优先）匹配，覆盖大小写差异。只在本用户范围内去重。
     key = _key(word, lemma)
     existing = next(
-        (row for row in db.query(Vocab).all() if _key(row.word, row.lemma) == key),
+        (
+            row
+            for row in db.query(Vocab).filter(Vocab.user_id == user.id).all()
+            if _key(row.word, row.lemma) == key
+        ),
         None,
     )
 
@@ -180,6 +191,7 @@ def create_vocab(payload: VocabCreate, db: Session = Depends(get_db)) -> VocabOu
         return serialize(existing, titles.get(existing.media_id or -1), duplicated=True)
 
     row = Vocab(
+        user_id=user.id,
         word=word[:128],
         lemma=lemma[:128] if lemma else None,
         phonetic=(payload.phonetic or None),
@@ -198,8 +210,8 @@ def create_vocab(payload: VocabCreate, db: Session = Depends(get_db)) -> VocabOu
     return serialize(row, titles.get(row.media_id or -1))
 
 
-def _get_or_404(db: Session, vocab_id: int) -> Vocab:
-    row = db.get(Vocab, vocab_id)
+def _get_or_404(db: Session, vocab_id: int, user_id: int) -> Vocab:
+    row = db.query(Vocab).filter(Vocab.id == vocab_id, Vocab.user_id == user_id).first()
     if row is None:
         raise HTTPException(status_code=404, detail="生词不存在")
     return row
@@ -209,9 +221,10 @@ def _get_or_404(db: Session, vocab_id: int) -> Vocab:
 def update_vocab(
     vocab_id: int,
     payload: VocabUpdate,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> VocabOut:
-    row = _get_or_404(db, vocab_id)
+    row = _get_or_404(db, vocab_id, user.id)
     if payload.translation is not None:
         row.translation = payload.translation.strip() or None
     if payload.context is not None:
@@ -225,8 +238,12 @@ def update_vocab(
 
 
 @router.delete("/{vocab_id}", status_code=204)
-def delete_vocab(vocab_id: int, db: Session = Depends(get_db)) -> Response:
-    row = _get_or_404(db, vocab_id)
+def delete_vocab(
+    vocab_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    row = _get_or_404(db, vocab_id, user.id)
     db.delete(row)
     db.commit()
     logger.info("已删除生词：%s（id=%s）", row.word, vocab_id)

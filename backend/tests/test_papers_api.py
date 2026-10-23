@@ -540,7 +540,7 @@ class TestReport:
         函数，正是为了证明闸不在 HTTP 层。
         """
         ids = seed_paper()
-        session = papers_service.create_session(db_session, ids["paper"])
+        session = papers_service.create_session(db_session, ids["paper"], user_id=1)
         assert session.submitted_at is None
 
         with pytest.raises(papers_service.SessionNotSubmittedError):

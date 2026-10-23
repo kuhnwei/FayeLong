@@ -93,6 +93,17 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "media": {
         "category_id": "INTEGER REFERENCES categories(id) ON DELETE SET NULL",
     },
+    # 多用户（v1.16.2）：users 三列（NOT NULL + 非空常量默认）与 4 张个人表的
+    # user_id（可空；vocab 刻意不加外键，理由见 entities.py 的 Vocab docstring）。
+    "users": {
+        "role": "TEXT NOT NULL DEFAULT 'user'",
+        "is_active": "INTEGER NOT NULL DEFAULT 1",
+        "token_version": "INTEGER NOT NULL DEFAULT 0",
+    },
+    "attempts": {"user_id": "INTEGER REFERENCES users(id)"},
+    "notes": {"user_id": "INTEGER REFERENCES users(id)"},
+    "vocab": {"user_id": "INTEGER"},
+    "practice_sessions": {"user_id": "INTEGER REFERENCES users(id)"},
 }
 
 # 老库只跑 `ALTER ADD COLUMN`，不会自动补索引，需显式幂等建索引。
@@ -100,6 +111,10 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
 # （同上：只为「没有 alembic_version 的旧库」兜底，新库/已迁移库以 Alembic 为准。）
 _INDEXES: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS ix_media_category_id ON media(category_id)",
+    "CREATE INDEX IF NOT EXISTS ix_attempts_user_id ON attempts(user_id)",
+    "CREATE INDEX IF NOT EXISTS ix_notes_user_id ON notes(user_id)",
+    "CREATE INDEX IF NOT EXISTS ix_vocab_user_id ON vocab(user_id)",
+    "CREATE INDEX IF NOT EXISTS ix_practice_sessions_user_id ON practice_sessions(user_id)",
 )
 
 
@@ -143,6 +158,69 @@ def _ensure_indexes() -> None:
     with engine.begin() as conn:
         for statement in _INDEXES:
             conn.exec_driver_sql(statement)
+
+
+def _ensure_multiuser_data() -> None:
+    """多用户改造的旧库兜底：notes 唯一索引切换 + 个人数据回填 + marks 迁移。
+
+    Notes:
+        与 `_ensure_columns()` 同属**旧库兜底**，只为「没有 `alembic_version` 的
+        老库」服务。新库 / 已迁移库由 Alembic `0004` 演进，本函数对它们基本是
+        空转（回填 `WHERE user_id IS NULL` 无命中、索引判据发现已非唯一则跳过）。
+
+        `notes.sentence_id` 的唯一索引必须降级为 `(user_id, sentence_id)` 联合
+        唯一 —— 这是唯一无法用 `ALTER TABLE` 表达、也依赖反射判据的操作，故
+        单独成函数而非塞进 `_INDEXES`（那里只有 `IF NOT EXISTS` 幂等建索引，
+        无法表达「先 DROP 唯一索引再建非唯一」的切换）。
+
+        ⚠️ 并发：web 与 worker 双进程同时首启会一起跑本函数，`DROP INDEX IF
+        EXISTS` + 吞 `already exists` 保证幂等（与 `_create_all_tolerant` 同口径）。
+    """
+    with engine.begin() as conn:
+        # 1. notes 的 sentence_id 唯一索引降级为非唯一。
+        #    PRAGMA index_list(notes) 第 3 列是 unique 位（0/1）。
+        unique_names = {
+            row[1] for row in conn.exec_driver_sql("PRAGMA index_list(notes)").fetchall()
+            if row[2]
+        }
+        if "ix_notes_sentence_id" in unique_names:
+            try:
+                conn.exec_driver_sql("DROP INDEX IF EXISTS ix_notes_sentence_id")
+                conn.exec_driver_sql(
+                    "CREATE INDEX ix_notes_sentence_id ON notes(sentence_id)"
+                )
+            except OperationalError as exc:
+                if not _is_already_exists(exc):
+                    raise
+                logger.info(
+                    "notes 索引切换时另一进程已建好同名非唯一索引，跳过（并发首启）"
+                )
+        # 2. 建联合唯一索引（幂等）。
+        conn.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_notes_user_sentence "
+            "ON notes(user_id, sentence_id)"
+        )
+
+        # 3. 数据回填：老库唯一账号回填到所有个人行；marks 迁到 sentence_marks。
+        legacy = conn.exec_driver_sql(
+            "SELECT id FROM users ORDER BY id LIMIT 1"
+        ).fetchone()
+        if legacy is not None:
+            legacy_id = int(legacy[0])
+            for table in ("attempts", "notes", "vocab", "practice_sessions"):
+                conn.exec_driver_sql(
+                    f"UPDATE {table} SET user_id = ? WHERE user_id IS NULL",
+                    (legacy_id,),
+                )
+            conn.exec_driver_sql(
+                "INSERT INTO sentence_marks(user_id, sentence_id, ranges) "
+                "SELECT ?, id, marks FROM sentences "
+                "WHERE marks IS NOT NULL AND marks <> '' "
+                "AND NOT EXISTS (SELECT 1 FROM sentence_marks sm "
+                "WHERE sm.sentence_id = sentences.id)",
+                (legacy_id,),
+            )
+            conn.exec_driver_sql("UPDATE sentences SET marks = ''")
 
 
 #: `create_all` 并发冲突时的重试次数与间隔（见 `_create_all_tolerant`）。
@@ -257,3 +335,4 @@ def init_db() -> None:
     _create_all_tolerant()
     _ensure_columns()
     _ensure_indexes()
+    _ensure_multiuser_data()

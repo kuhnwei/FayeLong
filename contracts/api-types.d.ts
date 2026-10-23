@@ -3,6 +3,114 @@
 // 重新生成：node scripts/gen-api-types.mjs
 
 export interface paths {
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Users
+         * @description 用户列表（含每人的学习统计摘要，供对比）。
+         */
+        get: operations["list_users_api_admin_users_get"];
+        put?: never;
+        /**
+         * Create User
+         * @description 创建用户（默认普通用户，可显式建管理员）。
+         */
+        post: operations["create_user_api_admin_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Users
+         * @description 多用户学习状态对比（与 `/users` 同口径，语义化别名）。
+         */
+        get: operations["compare_users_api_admin_users_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete User
+         * @description 软删除用户（`is_active=false`，数据保留）；旧会话立即失效。
+         */
+        delete: operations["delete_user_api_admin_users__user_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update User
+         * @description 启停 / 改角色。停用或降级会让该用户的旧会话立即失效。
+         */
+        patch: operations["update_user_api_admin_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/admin/users/{user_id}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Password
+         * @description 重置密码（admin 指定新密码）；重置后旧会话立即失效。
+         */
+        post: operations["reset_password_api_admin_users__user_id__reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{user_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Stats
+         * @description 单个用户的详细学习统计。
+         */
+        get: operations["get_user_stats_api_admin_users__user_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/attempts": {
         parameters: {
             query?: never;
@@ -74,7 +182,7 @@ export interface paths {
         put?: never;
         /**
          * Change Password
-         * @description 修改密码。需已登录且知道当前密码。
+         * @description 修改密码。需已登录且知道当前密码；改密后旧 cookie 立即失效、重发新会话。
          */
         post: operations["change_password_api_auth_password_post"];
         delete?: never;
@@ -94,7 +202,7 @@ export interface paths {
         put?: never;
         /**
          * Setup
-         * @description 首次初始化账号。已存在账号时一律拒绝（防止公网上被抢占/重置）。
+         * @description 首次初始化：创建**管理员**账号。已存在任何账号时一律拒绝（防止公网上被抢占/重置）。
          */
         post: operations["setup_api_auth_setup_post"];
         delete?: never;
@@ -138,7 +246,7 @@ export interface paths {
         put?: never;
         /**
          * Create Category
-         * @description 新建分类。`sort_order = COALESCE(MAX(sort_order), -1) + 1`（空表首个得 0）。
+         * @description 新建分类（仅管理员）。`sort_order = COALESCE(MAX(sort_order), -1) + 1`。
          */
         post: operations["create_category_api_categories_post"];
         delete?: never;
@@ -162,7 +270,7 @@ export interface paths {
         head?: never;
         /**
          * Reorder Categories
-         * @description 按提交的 ids 顺序重写 `sort_order`（0 基）。
+         * @description 按提交的 ids 顺序重写 `sort_order`（0 基）。仅管理员。
          *
          *     `ids` 必须是当前**全部分类 id 的完整有序集合**：不得有未知 id、不得缺项、不得重复，
          *     否则 400。
@@ -182,7 +290,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Category
-         * @description 删除分类：先把旗下素材退回「未分类」，再删分类行；**不删任何素材**。
+         * @description 删除分类（仅管理员）：先把旗下素材退回「未分类」，再删分类行；**不删任何素材**。
          *
          *     显式 `UPDATE media SET category_id=NULL` 而不依赖 DB 级联 —— 即使某条连接未开
          *     FK，回落语义也正确；DB 级 `ON DELETE SET NULL` 只作第二道防线。
@@ -192,7 +300,7 @@ export interface paths {
         head?: never;
         /**
          * Update Category
-         * @description 重命名分类（本轮只允许改 name）。
+         * @description 重命名分类（本轮只允许改 name）。仅管理员。
          */
         patch: operations["update_category_api_categories__category_id__patch"];
         trace?: never;
@@ -257,7 +365,7 @@ export interface paths {
         put?: never;
         /**
          * Upload Media
-         * @description 上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。
+         * @description 上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。仅管理员可上传。
          */
         post: operations["upload_media_api_media_post"];
         delete?: never;
@@ -277,7 +385,7 @@ export interface paths {
         put?: never;
         /**
          * Batch Set Category
-         * @description 批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。
+         * @description 批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。仅管理员。
          *
          *     - `ids` 为空 → 400；`category_id` 指向的分类不存在 → 404。
          *     - `ids` 中不存在的媒体 id 不报错，收进 `missing` 回报，便于前端提示「N 个已失效」。
@@ -300,7 +408,7 @@ export interface paths {
         put?: never;
         /**
          * Import From Inbox
-         * @description 从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。
+         * @description 从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。仅管理员。
          */
         post: operations["import_from_inbox_api_media_import_post"];
         delete?: never;
@@ -318,7 +426,7 @@ export interface paths {
         };
         /**
          * Get Inbox
-         * @description 列出收件箱里的素材（用户直接把文件放进该目录即可）。
+         * @description 列出收件箱里的素材（仅管理员；用户直接把文件放进该目录即可）。
          */
         get: operations["get_inbox_api_media_inbox_get"];
         put?: never;
@@ -360,7 +468,7 @@ export interface paths {
         post?: never;
         /**
          * Clear Clips
-         * @description 清理切片以回收磁盘（学习页仍可整段播放）。
+         * @description 清理切片以回收磁盘（学习页仍可整段播放）。仅管理员。
          */
         delete: operations["clear_clips_api_media__media_id__clips_delete"];
         options?: never;
@@ -459,7 +567,7 @@ export interface paths {
         put?: never;
         /**
          * Retranscribe Media
-         * @description 重新识别（保留已转码音频，只重跑 识别→翻译→切片）。
+         * @description 重新识别（保留已转码音频，只重跑 识别→翻译→切片）。仅管理员。
          *
          *     注意：会按识别结果重建句表，原有句子笔记与听写记录将一并清除。
          */
@@ -481,7 +589,7 @@ export interface paths {
         put?: never;
         /**
          * Retry Media
-         * @description 重新处理（失败重试 / 手动重跑转码）。
+         * @description 重新处理（失败重试 / 手动重跑转码）。仅管理员。
          */
         post: operations["retry_media_api_media__media_id__retry_post"];
         delete?: never;
@@ -647,7 +755,7 @@ export interface paths {
         head?: never;
         /**
          * Update Sentence
-         * @description 编辑单句（原文 / 翻译 / 时间边界）。
+         * @description 编辑单句（原文 / 翻译 / 时间边界）。仅管理员。
          */
         patch: operations["update_sentence_api_sentences__sentence_id__patch"];
         trace?: never;
@@ -677,6 +785,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sentences/{sentence_id}/marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Marks
+         * @description 整体替换当前用户在该句上的「易听错」标记（空数组 = 清空）。
+         */
+        put: operations["update_marks_api_sentences__sentence_id__marks_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sentences/{sentence_id}/merge": {
         parameters: {
             query?: never;
@@ -688,7 +816,7 @@ export interface paths {
         put?: never;
         /**
          * Merge Sentence
-         * @description 与相邻句合并（默认向后合并）。
+         * @description 与相邻句合并（默认向后合并）。仅管理员。
          */
         post: operations["merge_sentence_api_sentences__sentence_id__merge_post"];
         delete?: never;
@@ -708,7 +836,7 @@ export interface paths {
         put?: never;
         /**
          * Retranslate Sentence
-         * @description 单句重新翻译（在线引擎 + 缓存）。
+         * @description 单句重新翻译（在线引擎 + 缓存）。仅管理员。
          */
         post: operations["retranslate_sentence_api_sentences__sentence_id__retranslate_post"];
         delete?: never;
@@ -728,7 +856,7 @@ export interface paths {
         put?: never;
         /**
          * Split Sentence
-         * @description 在 `at_ms` 处把一句拆成两句。
+         * @description 在 `at_ms` 处把一句拆成两句。仅管理员。
          */
         post: operations["split_sentence_api_sentences__sentence_id__split_post"];
         delete?: never;
@@ -821,7 +949,7 @@ export interface paths {
         };
         /**
          * Get Stats
-         * @description 返回全局学习概览。
+         * @description 返回当前用户的全局学习概览（媒体/句子是共享内容，其余按用户隔离）。
          */
         get: operations["get_stats_api_stats_get"];
         put?: never;
@@ -850,6 +978,7 @@ export interface paths {
          *     - `courses.pct` 0–100 float，`total=0` 时 0；按 pct desc 取前 10；
          *     - `recent` 按 `created_at desc` 取 6 条；
          *     - 空库返回 HTTP 200 全零结构（非 404）。
+         *     - 多用户：所有个人口径（听写/生词/最近）按当前用户 `user_id` 隔离。
          */
         get: operations["get_overview_api_stats_overview_get"];
         put?: never;
@@ -923,6 +1052,117 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminPasswordReset
+         * @description 重置密码（admin 指定新密码）。
+         */
+        AdminPasswordReset: {
+            /** New Password */
+            new_password: string;
+        };
+        /**
+         * AdminUserCreate
+         * @description 创建普通/管理员用户（仅 admin 可调）。
+         */
+        AdminUserCreate: {
+            /** Password */
+            password: string;
+            /**
+             * Role
+             * @default user
+             * @enum {string}
+             */
+            role: "admin" | "user";
+            /** Username */
+            username: string;
+        };
+        /** AdminUserList */
+        AdminUserList: {
+            /** Items */
+            items: components["schemas"]["AdminUserOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * AdminUserOut
+         * @description 用户列表项（含统计摘要，供对比）。
+         */
+        AdminUserOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Role */
+            role: string;
+            stats: components["schemas"]["AdminUserSummary"];
+            /** Username */
+            username: string;
+        };
+        /**
+         * AdminUserSummary
+         * @description 单个用户的学习统计摘要（全部按 `user_id` 聚合）。
+         */
+        AdminUserSummary: {
+            /**
+             * Attempted Sentences
+             * @default 0
+             */
+            attempted_sentences: number;
+            /** Attempts Avg Accuracy */
+            attempts_avg_accuracy?: number | null;
+            /**
+             * Attempts Total
+             * @default 0
+             */
+            attempts_total: number;
+            /**
+             * Mastered Sentences
+             * @default 0
+             */
+            mastered_sentences: number;
+            /**
+             * Notes Count
+             * @default 0
+             */
+            notes_count: number;
+            /**
+             * Sessions Total
+             * @default 0
+             */
+            sessions_total: number;
+            /**
+             * Streak Days
+             * @default 0
+             */
+            streak_days: number;
+            /**
+             * Vocab Mastered
+             * @default 0
+             */
+            vocab_mastered: number;
+            /**
+             * Vocab Total
+             * @default 0
+             */
+            vocab_total: number;
+        };
+        /**
+         * AdminUserUpdate
+         * @description 启停 / 改角色（字段均可选）。
+         */
+        AdminUserUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Role */
+            role?: ("admin" | "user") | null;
+        };
         /**
          * AttemptCreate
          * @description 提交一次听写。
@@ -1082,6 +1322,10 @@ export interface components {
         AuthStatus: {
             /** Authenticated */
             authenticated: boolean;
+            /** Id */
+            id?: number | null;
+            /** Is Active */
+            is_active?: boolean | null;
             /**
              * Min Password Length
              * @default 8
@@ -1089,6 +1333,8 @@ export interface components {
             min_password_length: number;
             /** Needs Setup */
             needs_setup: boolean;
+            /** Role */
+            role?: string | null;
             /** Username */
             username?: string | null;
         };
@@ -1422,6 +1668,14 @@ export interface components {
              * @default 0
              */
             today_new_vocab: number;
+        };
+        /**
+         * MarksUpdate
+         * @description 整体替换某句的「易听错」标记（空数组 = 清空）。个人数据，按当前用户隔离。
+         */
+        MarksUpdate: {
+            /** Marks */
+            marks: number[][];
         };
         /** MediaDetailOut */
         MediaDetailOut: {
@@ -2113,6 +2367,10 @@ export interface components {
         /**
          * SentenceUpdate
          * @description PATCH 单句：仅传需要修改的字段（FR-M6 人工校对）。
+         *
+         *     ⚠️ `marks` 已废弃：多用户后「易听错」标记是个人数据，改走独立的
+         *     `PUT /api/sentences/{id}/marks`（见 `MarksUpdate`）。本字段保留仅为契约兼容，
+         *     后端不再据此改动任何标记。
          */
         SentenceUpdate: {
             /** End Ms */
@@ -2318,6 +2576,215 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_users_api_admin_users_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserList"];
+                };
+            };
+        };
+    };
+    create_user_api_admin_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_users_api_admin_users_compare_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserList"];
+                };
+            };
+        };
+    };
+    delete_user_api_admin_users__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_api_admin_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_password_api_admin_users__user_id__reset_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPasswordReset"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_stats_api_admin_users__user_id__stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_attempt_api_attempts_post: {
         parameters: {
             query?: never;
@@ -3418,6 +3885,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttemptListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_marks_api_sentences__sentence_id__marks_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sentence_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarksUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

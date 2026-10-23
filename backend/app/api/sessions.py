@@ -27,8 +27,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
 from app.db import get_db
-from app.models import PracticeSession
+from app.models import PracticeSession, User
 from app.schemas.sessions import ReportOut, ResponsesPatch, SessionOut
 from app.services import papers as papers_service
 
@@ -37,20 +38,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
-def _load_session(db: Session, session_id: int) -> PracticeSession:
-    """取会话；不存在时 404。
-
-    Args:
-        db: 会话。
-        session_id: 会话 id。
-
-    Returns:
-        `PracticeSession`。
-
-    Raises:
-        HTTPException: 404。
-    """
-    session = db.get(PracticeSession, int(session_id))
+def _load_session(db: Session, session_id: int, user_id: int) -> PracticeSession:
+    """取会话；不存在或不属于当前用户时 404（多用户隔离，防 IDOR）。"""
+    session = db.query(PracticeSession).filter(
+        PracticeSession.id == session_id, PracticeSession.user_id == user_id
+    ).first()
     if session is None:
         raise HTTPException(status_code=404, detail="会话不存在")
     return session
@@ -60,6 +52,7 @@ def _load_session(db: Session, session_id: int) -> PracticeSession:
 def patch_responses(
     session_id: int,
     payload: ResponsesPatch,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> SessionOut:
     """暂存/更新作答（批量 upsert：同一题重复提交是覆盖，不是新增）。
@@ -67,7 +60,7 @@ def patch_responses(
     Raises:
         HTTPException: 404 会话不存在；409 已交卷；400 题号不属于本试卷。
     """
-    session = _load_session(db, session_id)
+    session = _load_session(db, session_id, user.id)
     try:
         papers_service.upsert_responses(
             db, session, [(item.question_id, item.answer) for item in payload.responses]
@@ -85,7 +78,11 @@ def patch_responses(
 
 
 @router.post("/{session_id}/submit", response_model=SessionOut)
-def submit_session(session_id: int, db: Session = Depends(get_db)) -> SessionOut:
+def submit_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SessionOut:
     """交卷判分。
 
     Notes:
@@ -97,7 +94,7 @@ def submit_session(session_id: int, db: Session = Depends(get_db)) -> SessionOut
     Raises:
         HTTPException: 404 会话不存在；409 还没有作答。
     """
-    session = _load_session(db, session_id)
+    session = _load_session(db, session_id, user.id)
     try:
         papers_service.submit_session(db, session)
     except papers_service.EmptySubmissionError as exc:
@@ -106,13 +103,17 @@ def submit_session(session_id: int, db: Session = Depends(get_db)) -> SessionOut
 
 
 @router.get("/{session_id}/report", response_model=ReportOut)
-def get_report(session_id: int, db: Session = Depends(get_db)) -> ReportOut:
+def get_report(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReportOut:
     """成绩报告（`pending > 0` 时说明还有题在等判分，不是错误）。
 
     Raises:
         HTTPException: 404 会话不存在；**409 尚未交卷**（报告是交卷后的成绩单）。
     """
-    session = _load_session(db, session_id)
+    session = _load_session(db, session_id, user.id)
     try:
         data = papers_service.report(db, session)
     except papers_service.SessionNotSubmittedError as exc:

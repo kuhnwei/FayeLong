@@ -14,8 +14,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
 from app.db import get_db
-from app.models import Note, Sentence
+from app.models import Note, Sentence, User
 from app.schemas.note import NoteOut, NoteUpsert
 
 logger = logging.getLogger(__name__)
@@ -30,15 +31,23 @@ def _require_sentence(db: Session, sentence_id: int) -> Sentence:
     return sentence
 
 
-def _note_of(db: Session, sentence_id: int) -> Note | None:
-    return db.query(Note).filter(Note.sentence_id == sentence_id).first()
+def _note_of(db: Session, sentence_id: int, user_id: int) -> Note | None:
+    return (
+        db.query(Note)
+        .filter(Note.sentence_id == sentence_id, Note.user_id == user_id)
+        .first()
+    )
 
 
 @router.get("/{sentence_id}", response_model=NoteOut)
-def get_note(sentence_id: int, db: Session = Depends(get_db)) -> NoteOut:
+def get_note(
+    sentence_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> NoteOut:
     """读取某句的笔记。"""
     _require_sentence(db, sentence_id)
-    row = _note_of(db, sentence_id)
+    row = _note_of(db, sentence_id, user.id)
     if row is None:
         return NoteOut(sentence_id=sentence_id, content="", exists=False)
     return NoteOut(
@@ -53,12 +62,13 @@ def get_note(sentence_id: int, db: Session = Depends(get_db)) -> NoteOut:
 def save_note(
     sentence_id: int,
     payload: NoteUpsert,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> NoteOut:
     """保存某句的笔记（upsert；内容为空则删除该笔记）。"""
     _require_sentence(db, sentence_id)
     content = (payload.content or "").strip()
-    row = _note_of(db, sentence_id)
+    row = _note_of(db, sentence_id, user.id)
 
     if not content:
         if row is not None:
@@ -68,7 +78,7 @@ def save_note(
         return NoteOut(sentence_id=sentence_id, content="", exists=False)
 
     if row is None:
-        row = Note(sentence_id=sentence_id, content=content)
+        row = Note(sentence_id=sentence_id, user_id=user.id, content=content)
         db.add(row)
     else:
         row.content = content

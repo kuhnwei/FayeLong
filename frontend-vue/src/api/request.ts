@@ -14,6 +14,16 @@ const REQUEST_TIMEOUT = 30_000
 /** 网络层错误的统一文案（连接失败 / 超时 / 中断）。 */
 class NetworkError extends Error {}
 
+/** 带 HTTP 状态码的错误（业务/权限错误，前端可按 status 区分处理）。 */
+export class HttpError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'HttpError'
+    this.status = status
+  }
+}
+
 /** 收到 401 时广播的事件名：App 监听它把界面切回登录页。 */
 export const UNAUTHORIZED_EVENT = 'fayelong:unauthorized'
 
@@ -47,10 +57,14 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 
   if (res.status === 401) {
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-    throw new Error(await readError(res))
+    throw new HttpError(await readError(res), 401)
+  }
+  if (res.status === 403) {
+    // 403 = 已登录但无权限：**不**广播 unauthorized（否则会把管理员误踢回登录页）。
+    throw new HttpError(await readError(res), 403)
   }
   if (!res.ok) {
-    throw new Error(await readError(res))
+    throw new HttpError(await readError(res), res.status)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T

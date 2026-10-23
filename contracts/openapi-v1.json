@@ -1,6 +1,218 @@
 {
   "components": {
     "schemas": {
+      "AdminPasswordReset": {
+        "description": "重置密码（admin 指定新密码）。",
+        "properties": {
+          "new_password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password"
+        ],
+        "title": "AdminPasswordReset",
+        "type": "object"
+      },
+      "AdminUserCreate": {
+        "description": "创建普通/管理员用户（仅 admin 可调）。",
+        "properties": {
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "default": "user",
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "AdminUserCreate",
+        "type": "object"
+      },
+      "AdminUserList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUserOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AdminUserList",
+        "type": "object"
+      },
+      "AdminUserOut": {
+        "description": "用户列表项（含统计摘要，供对比）。",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/AdminUserSummary"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "is_active",
+          "created_at",
+          "last_login_at",
+          "stats"
+        ],
+        "title": "AdminUserOut",
+        "type": "object"
+      },
+      "AdminUserSummary": {
+        "description": "单个用户的学习统计摘要（全部按 `user_id` 聚合）。",
+        "properties": {
+          "attempted_sentences": {
+            "default": 0,
+            "title": "Attempted Sentences",
+            "type": "integer"
+          },
+          "attempts_avg_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempts Avg Accuracy"
+          },
+          "attempts_total": {
+            "default": 0,
+            "title": "Attempts Total",
+            "type": "integer"
+          },
+          "mastered_sentences": {
+            "default": 0,
+            "title": "Mastered Sentences",
+            "type": "integer"
+          },
+          "notes_count": {
+            "default": 0,
+            "title": "Notes Count",
+            "type": "integer"
+          },
+          "sessions_total": {
+            "default": 0,
+            "title": "Sessions Total",
+            "type": "integer"
+          },
+          "streak_days": {
+            "default": 0,
+            "title": "Streak Days",
+            "type": "integer"
+          },
+          "vocab_mastered": {
+            "default": 0,
+            "title": "Vocab Mastered",
+            "type": "integer"
+          },
+          "vocab_total": {
+            "default": 0,
+            "title": "Vocab Total",
+            "type": "integer"
+          }
+        },
+        "title": "AdminUserSummary",
+        "type": "object"
+      },
+      "AdminUserUpdate": {
+        "description": "启停 / 改角色（字段均可选）。",
+        "properties": {
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin",
+                  "user"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "title": "AdminUserUpdate",
+        "type": "object"
+      },
       "AttemptCreate": {
         "description": "提交一次听写。",
         "properties": {
@@ -224,6 +436,28 @@
             "title": "Authenticated",
             "type": "boolean"
           },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
           "min_password_length": {
             "default": 8,
             "title": "Min Password Length",
@@ -232,6 +466,17 @@
           "needs_setup": {
             "title": "Needs Setup",
             "type": "boolean"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
           },
           "username": {
             "anyOf": [
@@ -843,6 +1088,26 @@
           }
         },
         "title": "KpiOut",
+        "type": "object"
+      },
+      "MarksUpdate": {
+        "description": "整体替换某句的「易听错」标记（空数组 = 清空）。个人数据，按当前用户隔离。",
+        "properties": {
+          "marks": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Marks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "marks"
+        ],
+        "title": "MarksUpdate",
         "type": "object"
       },
       "MediaDetailOut": {
@@ -2102,7 +2367,7 @@
         "type": "object"
       },
       "SentenceUpdate": {
-        "description": "PATCH 单句：仅传需要修改的字段（FR-M6 人工校对）。",
+        "description": "PATCH 单句：仅传需要修改的字段（FR-M6 人工校对）。\n\n⚠️ `marks` 已废弃：多用户后「易听错」标记是个人数据，改走独立的\n`PUT /api/sentences/{id}/marks`（见 `MarksUpdate`）。本字段保留仅为契约兼容，\n后端不再据此改动任何标记。",
         "properties": {
           "end_ms": {
             "anyOf": [
@@ -2633,6 +2898,284 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/users": {
+      "get": {
+        "description": "用户列表（含每人的学习统计摘要，供对比）。",
+        "operationId": "list_users_api_admin_users_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Users",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "创建用户（默认普通用户，可显式建管理员）。",
+        "operationId": "create_user_api_admin_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/compare": {
+      "get": {
+        "description": "多用户学习状态对比（与 `/users` 同口径，语义化别名）。",
+        "operationId": "compare_users_api_admin_users_compare_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Compare Users",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}": {
+      "delete": {
+        "description": "软删除用户（`is_active=false`，数据保留）；旧会话立即失效。",
+        "operationId": "delete_user_api_admin_users__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete User Api Admin Users  User Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete User",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "启停 / 改角色。停用或降级会让该用户的旧会话立即失效。",
+        "operationId": "update_user_api_admin_users__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/reset-password": {
+      "post": {
+        "description": "重置密码（admin 指定新密码）；重置后旧会话立即失效。",
+        "operationId": "reset_password_api_admin_users__user_id__reset_password_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPasswordReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reset Password Api Admin Users  User Id  Reset Password Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Password",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/stats": {
+      "get": {
+        "description": "单个用户的详细学习统计。",
+        "operationId": "get_user_stats_api_admin_users__user_id__stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get User Stats",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/attempts": {
       "post": {
         "description": "提交一次听写：与标准答案比对，记录结果并返回词级明细。",
@@ -2741,7 +3284,7 @@
     },
     "/api/auth/password": {
       "post": {
-        "description": "修改密码。需已登录且知道当前密码。",
+        "description": "修改密码。需已登录且知道当前密码；改密后旧 cookie 立即失效、重发新会话。",
         "operationId": "change_password_api_auth_password_post",
         "requestBody": {
           "content": {
@@ -2783,7 +3326,7 @@
     },
     "/api/auth/setup": {
       "post": {
-        "description": "首次初始化账号。已存在账号时一律拒绝（防止公网上被抢占/重置）。",
+        "description": "首次初始化：创建**管理员**账号。已存在任何账号时一律拒绝（防止公网上被抢占/重置）。",
         "operationId": "setup_api_auth_setup_post",
         "requestBody": {
           "content": {
@@ -2867,7 +3410,7 @@
         ]
       },
       "post": {
-        "description": "新建分类。`sort_order = COALESCE(MAX(sort_order), -1) + 1`（空表首个得 0）。",
+        "description": "新建分类（仅管理员）。`sort_order = COALESCE(MAX(sort_order), -1) + 1`。",
         "operationId": "create_category_api_categories_post",
         "requestBody": {
           "content": {
@@ -2909,7 +3452,7 @@
     },
     "/api/categories/order": {
       "patch": {
-        "description": "按提交的 ids 顺序重写 `sort_order`（0 基）。\n\n`ids` 必须是当前**全部分类 id 的完整有序集合**：不得有未知 id、不得缺项、不得重复，\n否则 400。",
+        "description": "按提交的 ids 顺序重写 `sort_order`（0 基）。仅管理员。\n\n`ids` 必须是当前**全部分类 id 的完整有序集合**：不得有未知 id、不得缺项、不得重复，\n否则 400。",
         "operationId": "reorder_categories_api_categories_order_patch",
         "requestBody": {
           "content": {
@@ -2951,7 +3494,7 @@
     },
     "/api/categories/{category_id}": {
       "delete": {
-        "description": "删除分类：先把旗下素材退回「未分类」，再删分类行；**不删任何素材**。\n\n显式 `UPDATE media SET category_id=NULL` 而不依赖 DB 级联 —— 即使某条连接未开\nFK，回落语义也正确；DB 级 `ON DELETE SET NULL` 只作第二道防线。",
+        "description": "删除分类（仅管理员）：先把旗下素材退回「未分类」，再删分类行；**不删任何素材**。\n\n显式 `UPDATE media SET category_id=NULL` 而不依赖 DB 级联 —— 即使某条连接未开\nFK，回落语义也正确；DB 级 `ON DELETE SET NULL` 只作第二道防线。",
         "operationId": "delete_category_api_categories__category_id__delete",
         "parameters": [
           {
@@ -2994,7 +3537,7 @@
         ]
       },
       "patch": {
-        "description": "重命名分类（本轮只允许改 name）。",
+        "description": "重命名分类（本轮只允许改 name）。仅管理员。",
         "operationId": "update_category_api_categories__category_id__patch",
         "parameters": [
           {
@@ -3162,7 +3705,7 @@
         ]
       },
       "post": {
-        "description": "上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。",
+        "description": "上传一个音频 / 视频文件（视频仅取音轨）；可选指定分类。仅管理员可上传。",
         "operationId": "upload_media_api_media_post",
         "requestBody": {
           "content": {
@@ -3204,7 +3747,7 @@
     },
     "/api/media/batch-category": {
       "post": {
-        "description": "批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。\n\n- `ids` 为空 → 400；`category_id` 指向的分类不存在 → 404。\n- `ids` 中不存在的媒体 id 不报错，收进 `missing` 回报，便于前端提示「N 个已失效」。",
+        "description": "批量把素材移动到某个分类（`category_id=null` = 移到「未分类」）。仅管理员。\n\n- `ids` 为空 → 400；`category_id` 指向的分类不存在 → 404。\n- `ids` 中不存在的媒体 id 不报错，收进 `missing` 回报，便于前端提示「N 个已失效」。",
         "operationId": "batch_set_category_api_media_batch_category_post",
         "requestBody": {
           "content": {
@@ -3248,7 +3791,7 @@
     },
     "/api/media/import": {
       "post": {
-        "description": "从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。",
+        "description": "从收件箱导入；不传 files 则导入全部尚未导入的受支持文件。仅管理员。",
         "operationId": "import_from_inbox_api_media_import_post",
         "requestBody": {
           "content": {
@@ -3290,7 +3833,7 @@
     },
     "/api/media/inbox": {
       "get": {
-        "description": "列出收件箱里的素材（用户直接把文件放进该目录即可）。",
+        "description": "列出收件箱里的素材（仅管理员；用户直接把文件放进该目录即可）。",
         "operationId": "get_inbox_api_media_inbox_get",
         "responses": {
           "200": {
@@ -3437,7 +3980,7 @@
     },
     "/api/media/{media_id}/clips": {
       "delete": {
-        "description": "清理切片以回收磁盘（学习页仍可整段播放）。",
+        "description": "清理切片以回收磁盘（学习页仍可整段播放）。仅管理员。",
         "operationId": "clear_clips_api_media__media_id__clips_delete",
         "parameters": [
           {
@@ -3657,7 +4200,7 @@
     },
     "/api/media/{media_id}/retranscribe": {
       "post": {
-        "description": "重新识别（保留已转码音频，只重跑 识别→翻译→切片）。\n\n注意：会按识别结果重建句表，原有句子笔记与听写记录将一并清除。",
+        "description": "重新识别（保留已转码音频，只重跑 识别→翻译→切片）。仅管理员。\n\n注意：会按识别结果重建句表，原有句子笔记与听写记录将一并清除。",
         "operationId": "retranscribe_media_api_media__media_id__retranscribe_post",
         "parameters": [
           {
@@ -3700,7 +4243,7 @@
     },
     "/api/media/{media_id}/retry": {
       "post": {
-        "description": "重新处理（失败重试 / 手动重跑转码）。",
+        "description": "重新处理（失败重试 / 手动重跑转码）。仅管理员。",
         "operationId": "retry_media_api_media__media_id__retry_post",
         "parameters": [
           {
@@ -4008,7 +4551,7 @@
     },
     "/api/sentences/{sentence_id}": {
       "patch": {
-        "description": "编辑单句（原文 / 翻译 / 时间边界）。",
+        "description": "编辑单句（原文 / 翻译 / 时间边界）。仅管理员。",
         "operationId": "update_sentence_api_sentences__sentence_id__patch",
         "parameters": [
           {
@@ -4114,9 +4657,64 @@
         ]
       }
     },
+    "/api/sentences/{sentence_id}/marks": {
+      "put": {
+        "description": "整体替换当前用户在该句上的「易听错」标记（空数组 = 清空）。",
+        "operationId": "update_marks_api_sentences__sentence_id__marks_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sentence_id",
+            "required": true,
+            "schema": {
+              "title": "Sentence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarksUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Marks Api Sentences  Sentence Id  Marks Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Marks",
+        "tags": [
+          "sentences"
+        ]
+      }
+    },
     "/api/sentences/{sentence_id}/merge": {
       "post": {
-        "description": "与相邻句合并（默认向后合并）。",
+        "description": "与相邻句合并（默认向后合并）。仅管理员。",
         "operationId": "merge_sentence_api_sentences__sentence_id__merge_post",
         "parameters": [
           {
@@ -4169,7 +4767,7 @@
     },
     "/api/sentences/{sentence_id}/retranslate": {
       "post": {
-        "description": "单句重新翻译（在线引擎 + 缓存）。",
+        "description": "单句重新翻译（在线引擎 + 缓存）。仅管理员。",
         "operationId": "retranslate_sentence_api_sentences__sentence_id__retranslate_post",
         "parameters": [
           {
@@ -4212,7 +4810,7 @@
     },
     "/api/sentences/{sentence_id}/split": {
       "post": {
-        "description": "在 `at_ms` 处把一句拆成两句。",
+        "description": "在 `at_ms` 处把一句拆成两句。仅管理员。",
         "operationId": "split_sentence_api_sentences__sentence_id__split_post",
         "parameters": [
           {
@@ -4404,7 +5002,7 @@
     },
     "/api/stats": {
       "get": {
-        "description": "返回全局学习概览。",
+        "description": "返回当前用户的全局学习概览（媒体/句子是共享内容，其余按用户隔离）。",
         "operationId": "get_stats_api_stats_get",
         "responses": {
           "200": {
@@ -4426,7 +5024,7 @@
     },
     "/api/stats/overview": {
       "get": {
-        "description": "统计页 14 天学习概览（ARCH §6.1）。\n\n口径：\n- 所有「按日」聚合用 `func.date(..., 'localtime')` 得到**本地日** `YYYY-MM-DD`；\n- `daily` 恒为 `days` 长（0 填充，无听写日 attempts/accuracy/new_vocab 显式 0）；\n- `streak_days`：从今天向前数连续 `attempts>0` 的天数，今天无听写 → 0；\n- `courses.pct` 0–100 float，`total=0` 时 0；按 pct desc 取前 10；\n- `recent` 按 `created_at desc` 取 6 条；\n- 空库返回 HTTP 200 全零结构（非 404）。",
+        "description": "统计页 14 天学习概览（ARCH §6.1）。\n\n口径：\n- 所有「按日」聚合用 `func.date(..., 'localtime')` 得到**本地日** `YYYY-MM-DD`；\n- `daily` 恒为 `days` 长（0 填充，无听写日 attempts/accuracy/new_vocab 显式 0）；\n- `streak_days`：从今天向前数连续 `attempts>0` 的天数，今天无听写 → 0；\n- `courses.pct` 0–100 float，`total=0` 时 0；按 pct desc 取前 10；\n- `recent` 按 `created_at desc` 取 6 条；\n- 空库返回 HTTP 200 全零结构（非 404）。\n- 多用户：所有个人口径（听写/生词/最近）按当前用户 `user_id` 隔离。",
         "operationId": "get_overview_api_stats_overview_get",
         "parameters": [
           {

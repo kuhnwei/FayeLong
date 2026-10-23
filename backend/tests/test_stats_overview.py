@@ -66,7 +66,7 @@ def test_overview_empty_db_returns_zeroes(wipe_learning, authed_client):
     assert body["vocab"] == {"total": 0, "mastered": 0}
 
 
-def test_daily_zero_fill_length_equals_days(wipe_learning, db_session, authed_client):
+def test_daily_zero_fill_length_equals_days(wipe_learning, db_session, authed_uid, authed_client):
     media = Media(title="demo", file_path="/tmp/demo.mp3", type="audio")
     db_session.add(media)
     db_session.commit()
@@ -76,9 +76,9 @@ def test_daily_zero_fill_length_equals_days(wipe_learning, db_session, authed_cl
 
     today_utc = _utc_days_ago(0)
     db_session.add(
-        Attempt(sentence_id=sentence.id, input="hi", accuracy=0.8, is_correct=False, created_at=today_utc)
+        Attempt(sentence_id=sentence.id, user_id=authed_uid, input="hi", accuracy=0.8, is_correct=False, created_at=today_utc)
     )
-    db_session.add(Vocab(word="hello", translation="你好", mastered=False, created_at=today_utc))
+    db_session.add(Vocab(user_id=authed_uid, word="hello", translation="你好", mastered=False, created_at=today_utc))
     db_session.commit()
 
     res = authed_client.get("/api/stats/overview?days=30")
@@ -97,7 +97,7 @@ def test_daily_zero_fill_length_equals_days(wipe_learning, db_session, authed_cl
     assert abs(non_zero[0]["accuracy"] - 0.8) < 1e-6
 
 
-def test_streak_today_zero_yields_zero(wipe_learning, db_session, authed_client):
+def test_streak_today_zero_yields_zero(wipe_learning, db_session, authed_uid, authed_client):
     media = Media(title="demo", file_path="/tmp/demo.mp3", type="audio")
     db_session.add(media)
     db_session.commit()
@@ -106,7 +106,7 @@ def test_streak_today_zero_yields_zero(wipe_learning, db_session, authed_client)
     db_session.commit()
     # 只造「昨天」的听写，今天没有 → streak 应为 0
     db_session.add(
-        Attempt(sentence_id=sentence.id, input="hi", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(1))
+        Attempt(sentence_id=sentence.id, user_id=authed_uid, input="hi", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(1))
     )
     db_session.commit()
 
@@ -116,7 +116,7 @@ def test_streak_today_zero_yields_zero(wipe_learning, db_session, authed_client)
     assert body["kpi"]["today_attempts"] == 0
 
 
-def test_streak_counts_consecutive_days(wipe_learning, db_session, authed_client):
+def test_streak_counts_consecutive_days(wipe_learning, db_session, authed_uid, authed_client):
     media = Media(title="demo", file_path="/tmp/demo.mp3", type="audio")
     db_session.add(media)
     db_session.commit()
@@ -125,7 +125,7 @@ def test_streak_counts_consecutive_days(wipe_learning, db_session, authed_client
     db_session.commit()
     for days_ago in (0, 1, 2):
         db_session.add(
-            Attempt(sentence_id=sentence.id, input="x", accuracy=0.5, is_correct=False, created_at=_utc_days_ago(days_ago))
+            Attempt(sentence_id=sentence.id, user_id=authed_uid, input="x", accuracy=0.5, is_correct=False, created_at=_utc_days_ago(days_ago))
         )
     # 第 3 天断档（跳过 days_ago=3），故连续段只有今天/昨天/前天 = 3
     db_session.commit()
@@ -136,7 +136,7 @@ def test_streak_counts_consecutive_days(wipe_learning, db_session, authed_client
     assert body["kpi"]["today_attempts"] == 1
 
 
-def test_courses_pct_and_order(wipe_learning, db_session, authed_client):
+def test_courses_pct_and_order(wipe_learning, db_session, authed_uid, authed_client):
     # media A：2 句练过 1 句 → pct 50；media B：2 句全练过 → pct 100（应排第一）
     a = Media(title="A", file_path="/tmp/a.mp3", type="audio")
     b = Media(title="B", file_path="/tmp/b.mp3", type="audio")
@@ -150,9 +150,9 @@ def test_courses_pct_and_order(wipe_learning, db_session, authed_client):
     db_session.add_all([a1, a2, b1, b2])
     db_session.commit()
 
-    db_session.add(Attempt(sentence_id=a1.id, input="x", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(0)))
-    db_session.add(Attempt(sentence_id=b1.id, input="x", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(0)))
-    db_session.add(Attempt(sentence_id=b2.id, input="x", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(0)))
+    db_session.add(Attempt(sentence_id=a1.id, user_id=authed_uid, input="x", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(0)))
+    db_session.add(Attempt(sentence_id=b1.id, user_id=authed_uid, input="x", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(0)))
+    db_session.add(Attempt(sentence_id=b2.id, user_id=authed_uid, input="x", accuracy=1.0, is_correct=True, created_at=_utc_days_ago(0)))
     db_session.commit()
 
     res = authed_client.get("/api/stats/overview")
@@ -178,7 +178,7 @@ def test_courses_empty_media_pct_zero(wipe_learning, db_session, authed_client):
     assert courses[0]["pct"] == 0.0
 
 
-def test_recent_sorted_desc_limit_six(wipe_learning, db_session, authed_client):
+def test_recent_sorted_desc_limit_six(wipe_learning, db_session, authed_uid, authed_client):
     media = Media(title="demo", file_path="/tmp/demo.mp3", type="audio")
     db_session.add(media)
     db_session.commit()
@@ -189,7 +189,7 @@ def test_recent_sorted_desc_limit_six(wipe_learning, db_session, authed_client):
     base = _utc_days_ago(0).replace(hour=0, minute=0, second=0, microsecond=0)
     for i in range(8):
         db_session.add(
-            Attempt(sentence_id=sentence.id, input=f"x{i}", accuracy=0.1 * i, is_correct=False, created_at=base + timedelta(minutes=i))
+            Attempt(sentence_id=sentence.id, user_id=authed_uid, input=f"x{i}", accuracy=0.1 * i, is_correct=False, created_at=base + timedelta(minutes=i))
         )
     db_session.commit()
 
@@ -204,10 +204,10 @@ def test_recent_sorted_desc_limit_six(wipe_learning, db_session, authed_client):
     assert stamps == sorted(stamps, reverse=True)
 
 
-def test_vocab_two_state_counts(wipe_learning, db_session, authed_client):
-    db_session.add(Vocab(word="a", mastered=True, created_at=_utc_days_ago(0)))
-    db_session.add(Vocab(word="b", mastered=False, created_at=_utc_days_ago(0)))
-    db_session.add(Vocab(word="c", mastered=False, created_at=_utc_days_ago(0)))
+def test_vocab_two_state_counts(wipe_learning, db_session, authed_uid, authed_client):
+    db_session.add(Vocab(user_id=authed_uid, word="a", mastered=True, created_at=_utc_days_ago(0)))
+    db_session.add(Vocab(user_id=authed_uid, word="b", mastered=False, created_at=_utc_days_ago(0)))
+    db_session.add(Vocab(user_id=authed_uid, word="c", mastered=False, created_at=_utc_days_ago(0)))
     db_session.commit()
 
     res = authed_client.get("/api/stats/overview")

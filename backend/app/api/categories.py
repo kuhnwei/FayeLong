@@ -18,8 +18,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_admin
 from app.db import get_db
-from app.models import Category, Media
+from app.models import Category, Media, User
 from app.schemas.category import (
     NAME_MAX_LENGTH,
     CategoryCreate,
@@ -129,9 +130,10 @@ def list_categories(db: Session = Depends(get_db)) -> CategoryListResponse:
 @router.post("", response_model=CategoryOut, status_code=201)
 def create_category(
     payload: CategoryCreate,
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> CategoryOut:
-    """新建分类。`sort_order = COALESCE(MAX(sort_order), -1) + 1`（空表首个得 0）。"""
+    """新建分类（仅管理员）。`sort_order = COALESCE(MAX(sort_order), -1) + 1`。"""
     name = _clean_name(payload.name)
     if _name_taken(db, name):
         raise HTTPException(status_code=409, detail=f"已存在同名分类「{name}」")
@@ -154,9 +156,10 @@ def create_category(
 @router.patch("/order", response_model=CategoryListResponse)
 def reorder_categories(
     payload: CategoryReorder,
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> CategoryListResponse:
-    """按提交的 ids 顺序重写 `sort_order`（0 基）。
+    """按提交的 ids 顺序重写 `sort_order`（0 基）。仅管理员。
 
     `ids` 必须是当前**全部分类 id 的完整有序集合**：不得有未知 id、不得缺项、不得重复，
     否则 400。
@@ -185,9 +188,10 @@ def reorder_categories(
 def update_category(
     category_id: int,          # ★ 必须为 int，否则会吞掉字面量 `order`
     payload: CategoryUpdate,
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> CategoryOut:
-    """重命名分类（本轮只允许改 name）。"""
+    """重命名分类（本轮只允许改 name）。仅管理员。"""
     category = _get_or_404(db, category_id)
     name = _clean_name(payload.name)
     if _name_taken(db, name, exclude_id=category.id):
@@ -205,8 +209,12 @@ def update_category(
 
 
 @router.delete("/{category_id}")
-def delete_category(category_id: int, db: Session = Depends(get_db)) -> dict:
-    """删除分类：先把旗下素材退回「未分类」，再删分类行；**不删任何素材**。
+def delete_category(
+    category_id: int,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """删除分类（仅管理员）：先把旗下素材退回「未分类」，再删分类行；**不删任何素材**。
 
     显式 `UPDATE media SET category_id=NULL` 而不依赖 DB 级联 —— 即使某条连接未开
     FK，回落语义也正确；DB 级 `ON DELETE SET NULL` 只作第二道防线。

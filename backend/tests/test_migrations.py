@@ -63,9 +63,9 @@ _REAL_DATA_DIR: Path = (_BACKEND_DIR.parent / "data").resolve()
 _REAL_DB_PATH: Path = _REAL_DATA_DIR / "app.db"
 
 #: 当前 head（P3-1 的基线 `0001` + P3-2 的 `0002_jobs_and_workers.py`
-#: + P4-3 的 `0003_ielts.py`）。
+#: + P4-3 的 `0003_ielts.py` + v1.16.2 的 `0004_multiuser.py`）。
 #: 语义从「基线」变成「当前 head」—— 保留 `0001` 的断言会阻止任何新迁移。
-_HEAD_REVISION = "0003"
+_HEAD_REVISION = "0004"
 
 #: 基线 `0001` 负责的 9 张业务表（与 `models/entities.py` 硬对齐，手工列出，
 #: 避免「metadata 少了某张表 → 期望值也跟着少」这种自我循环的假通过）。
@@ -104,8 +104,12 @@ _IELTS_TABLES = frozenset(
     }
 )
 
-#: 「老库升级前不存在」的全部表（P3-2 + P4-3）。上面两条规则合并后的口径。
-_ADDED_TABLES = _NEW_TABLES | _IELTS_TABLES
+#: `0004_multiuser.py` 新增的 1 张表（v1.16.2 个人「易听错」标记）。
+#: 口径同上：老库升级前不存在。
+_MULTIUSER_TABLES = frozenset({"sentence_marks"})
+
+#: 「老库升级前不存在」的全部表（P3-2 + P4-3 + v1.16.2）。上面几条规则合并后的口径。
+_ADDED_TABLES = _NEW_TABLES | _IELTS_TABLES | _MULTIUSER_TABLES
 
 #: 当前 head 应当建出的全部业务表。
 _EXPECTED_TABLES = _LEGACY_TABLES | _ADDED_TABLES
@@ -538,15 +542,27 @@ def test_fresh_database_creates_all_indexes(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 3) 模拟老库（表已存在、无 alembic_version）→ upgrade head：不报错、数据不丢
 # ---------------------------------------------------------------------------
-def test_legacy_database_upgrade_is_noop_and_keeps_data(tmp_path: Path) -> None:
-    """老交付库（有表无版本表）升级必须是 no-op，且写入版本号。"""
+def test_legacy_database_upgrade_backfills_multiuser(tmp_path: Path) -> None:
+    """0001 老库升级到 head：数据不丢 + user_id 回填 + marks 迁移 + 索引切换。
+
+    0004 之前，老库（有表无版本）升级是严格 no-op；0004 起会**演进老表**
+    （users/attempts/notes/vocab 加列、sentences.marks 迁到 sentence_marks）。
+    本用例验证：这些演进只加列/迁移数据，**不删一行、不改既有列定义**。
+    """
     legacy_db = tmp_path / "legacy.db"
 
-    # 用模型建出「老库」结构（等价于旧版本 create_all 的结果），并灌几行数据。
+    # 用 alembic 0001 建出真正的老库结构（9 表、无 user_id、notes 单列唯一）。
+    _upgrade(legacy_db, "0001")
+    assert _alembic_version(legacy_db) == "0001"
+
+    # 灌数据：1 个用户 + 素材/句子（带 marks）+ 个人数据。
     engine = _engine(legacy_db)
     try:
-        Base.metadata.create_all(bind=engine)
         with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "INSERT INTO users (username, password_hash, salt, iterations)"
+                " VALUES ('alice', 'deadbeef', 'cafe', 200000)"
+            )
             conn.exec_driver_sql("INSERT INTO categories (name, sort_order) VALUES ('第1章', 0)")
             conn.exec_driver_sql(
                 "INSERT INTO media (title, type, original_name, file_path, size_bytes,"
@@ -556,35 +572,59 @@ def test_legacy_database_upgrade_is_noop_and_keeps_data(tmp_path: Path) -> None:
             )
             conn.exec_driver_sql(
                 "INSERT INTO sentences (media_id, idx, start_ms, end_ms, text_en, text_zh,"
-                " is_edited, marks) VALUES (1, 0, 0, 1200, 'Hello there.', '你好。', 0, '[]')"
+                " is_edited, marks) VALUES (1, 0, 0, 1200, 'Hello there.', '你好。', 0, '[[0,1]]')"
             )
             conn.exec_driver_sql(
                 "INSERT INTO attempts (sentence_id, input, accuracy, is_correct)"
                 " VALUES (1, 'hello there', 100.0, 1)"
             )
+            conn.exec_driver_sql("INSERT INTO notes (sentence_id, content) VALUES (1, '备注')")
+            conn.exec_driver_sql("INSERT INTO vocab (word, mastered) VALUES ('hello', 0)")
     finally:
         engine.dispose()
 
-    # 前置条件：老库确实「有表、无版本表」。
-    assert "alembic_version" not in _table_names(legacy_db)
-    before_counts = _row_counts(legacy_db)
-    assert before_counts["categories"] == 1
-    assert before_counts["media"] == 1
-    assert before_counts["sentences"] == 1
-    assert before_counts["attempts"] == 1
-    before_info = _table_info(legacy_db)
+    # 前置：老库没有 user_id 列、notes 的 sentence_id 是唯一索引。
+    assert "user_id" not in {c[0] for c in _actual_columns(legacy_db, "attempts")}
+    with sqlite3.connect(str(legacy_db)) as conn:
+        notes_idx = {r[1]: r for r in conn.execute("PRAGMA index_list(notes)")}
+        assert notes_idx["ix_notes_sentence_id"][2] == 1  # 唯一
 
-    _upgrade(legacy_db)  # 不能抛 "table already exists"
+    _upgrade(legacy_db)  # head：不能抛 "table already exists"
 
     tables = _table_names(legacy_db)
     assert tables == _EXPECTED_TABLES | {"alembic_version"}, f"表集合不符：{tables}"
     assert _alembic_version(legacy_db) == _HEAD_REVISION
 
-    # 数据一行不少、结构一列不改（老库上基线是严格的 no-op）。
-    assert _row_counts(legacy_db) == before_counts
-    assert _table_info(legacy_db) == before_info
+    # 个人数据一行不少（只加列，不增删行）。
+    counts = _row_counts(legacy_db)
+    assert counts["attempts"] == 1
+    assert counts["notes"] == 1
+    assert counts["vocab"] == 1
+    assert counts["sentences"] == 1
+    assert counts["users"] == 1
 
-    # 列集合仍与模型一致（老库由 create_all 建出，天然对齐）。
+    with sqlite3.connect(str(legacy_db)) as conn:
+        # user_id 回填到老用户（id=1）。
+        assert conn.execute("SELECT user_id FROM attempts WHERE id=1").fetchone()[0] == 1
+        assert conn.execute("SELECT user_id FROM notes WHERE id=1").fetchone()[0] == 1
+        assert conn.execute("SELECT user_id FROM vocab WHERE id=1").fetchone()[0] == 1
+        # marks 迁到 sentence_marks，sentences.marks 清空。
+        assert conn.execute("SELECT marks FROM sentences WHERE id=1").fetchone()[0] == ""
+        row = conn.execute(
+            "SELECT user_id, sentence_id, ranges FROM sentence_marks"
+        ).fetchone()
+        assert row == (1, 1, "[[0,1]]"), row
+        # notes 唯一索引切换：单列降级为非唯一，联合唯一索引就位。
+        notes_idx = {r[1]: r for r in conn.execute("PRAGMA index_list(notes)")}
+        assert notes_idx["ix_notes_sentence_id"][2] == 0  # 非唯一
+        assert notes_idx["uq_notes_user_sentence"][2] == 1  # 唯一
+        # users 三列就位且默认值正确。
+        user_row = conn.execute(
+            "SELECT role, is_active, token_version FROM users WHERE id=1"
+        ).fetchone()
+        assert user_row == ("user", 1, 0), user_row
+
+    # 列集合最终与模型一致。
     for table_name in sorted(_EXPECTED_TABLES):
         actual = {column[0] for column in _actual_columns(legacy_db, table_name)}
         expected = {column.name for column in Base.metadata.tables[table_name].columns}
@@ -642,14 +682,16 @@ def test_fresh_schema_matches_models_exactly(tmp_path: Path) -> None:
         )
         total_indexes += len(expected_indexes)
 
-    # 防止「空比对」式假通过：数量级必须对得上（18 表 / 131 列 / 20 索引）。
-    # 131 = 84（P3-2 时的总量：63 张老表 + 14 jobs + 7 workers）
-    #       + 47（P4-3：papers 6 / sections 7 / passages 5 / questions 10 /
-    #              practice_sessions 7 / responses 8 / writing_grade_cache 4）
-    assert total_columns == 131, f"列总数异常：{total_columns}"
-    # 20 = 13（P3-2 时的 8 + 4 + 1）+ 7（P4-3 的 7 个外键列索引）
-    assert total_indexes == 20, f"索引总数异常：{total_indexes}"
-    assert len(_EXPECTED_TABLES) == 18
+    # 防止「空比对」式假通过：数量级必须对得上（19 表 / 142 列 / 28 索引）。
+    # 142 = 131（P4-3 时的总量）
+    #       + 11（0004：users 3 + attempts/notes/vocab/practice_sessions 各 1 +
+    #             sentence_marks 4）
+    assert total_columns == 142, f"列总数异常：{total_columns}"
+    # 28 = 20（P4-3 时的总量）
+    #      + 8（0004：attempts/notes/vocab/practice_sessions 各 +1 个 user_id 索引、
+    #            notes 的 uq_notes_user_sentence、sentence_marks 3 个索引）
+    assert total_indexes == 28, f"索引总数异常：{total_indexes}"
+    assert len(_EXPECTED_TABLES) == 19
 
 
 # ---------------------------------------------------------------------------
@@ -660,13 +702,11 @@ def test_fresh_schema_matches_models_exactly(tmp_path: Path) -> None:
     reason="本机没有 data/app.db（全新克隆 / CI），跳过真实库副本用例",
 )
 def test_real_database_copy_upgrade_keeps_everything(tmp_path: Path) -> None:
-    """把真实库拷到 tmp 再 upgrade：老表结构/数据不变 + 新表出现 + 版本号 = head。
+    """把真实库拷到 tmp 再 upgrade：个人数据不丢 + 0004 加列/回填/迁移。
 
-    断言为什么拆成「老 9 表逐列零改动」+「新表存在」两句：
-    `_table_info()` 遍历的是 `_EXPECTED_TABLES`，而真实库升级前**没有** `jobs`
-    表 → `PRAGMA table_info(jobs)` 返回 `[]`，与升级后的 14 列不等 → 整表比对
-    会**假红**；但直接删掉这条断言又会丢掉「老库结构不许动」的保护。
-    因此老表用 `_LEGACY_TABLES` 子集比对（**一个字都不许放宽**），新表只断言存在。
+    0004 会演进老表（users/attempts/notes/vocab 加列、sentences.marks 迁移），
+    所以「逐列零改动」只对 0004 **不碰**的 5 张老表成立；对加列的 4 张，只断言
+    行数不变、新列就位、user_id 回填。
     """
     copy_db = tmp_path / "app-copy.db"
     shutil.copy2(_REAL_DB_PATH, copy_db)  # 只读源文件，写入目标在 tmp
@@ -675,11 +715,18 @@ def test_real_database_copy_upgrade_keeps_everything(tmp_path: Path) -> None:
     _guard_path(copy_db)
     assert copy_db.resolve() != _REAL_DB_PATH.resolve()
 
+    # 0004 会加列的 4 张老表；其余 5 张老表列定义零改动。
+    _altered_tables = frozenset({"users", "attempts", "notes", "vocab"})
+    _untouched_tables = _LEGACY_TABLES - _altered_tables
+
     before_counts = _row_counts(copy_db, _LEGACY_TABLES)
-    # 真实库此时还没有 alembic_version，也还没有 jobs/workers。
-    before_info = _table_info(copy_db, tables=_LEGACY_TABLES)
+    before_info = _table_info(copy_db, tables=_untouched_tables)
+    with sqlite3.connect(str(copy_db)) as conn:
+        before_marks = conn.execute(
+            "SELECT COUNT(*) FROM sentences WHERE marks IS NOT NULL AND marks <> ''"
+        ).fetchone()[0]
+    # 真实库此时还没有 alembic_version，也还没有任何新增表。
     assert "alembic_version" not in _table_names(copy_db)
-    # 真实库此时既没有 jobs/workers，也没有 P4-3 的 7 张表。
     assert not (_ADDED_TABLES & _table_names(copy_db)), sorted(
         _ADDED_TABLES & _table_names(copy_db)
     )
@@ -687,15 +734,14 @@ def test_real_database_copy_upgrade_keeps_everything(tmp_path: Path) -> None:
     _upgrade(copy_db)
 
     assert _alembic_version(copy_db) == _HEAD_REVISION
+    # 数据一行不少（0004 只加列，不删行）。
     assert _row_counts(copy_db, _LEGACY_TABLES) == before_counts, "老表数据行数被改动"
 
-    # 老 9 张表必须逐列零改动（这条断言一个字都不许放宽）。
-    after_info = _table_info(copy_db, tables=_LEGACY_TABLES)
-    assert {t: after_info[t] for t in _LEGACY_TABLES} == {
-        t: before_info[t] for t in _LEGACY_TABLES
-    }, "老库结构被改动（基线对已有表必须 no-op）"
+    # 0004 不碰的 5 张老表必须逐列零改动（这条断言一个字都不许放宽）。
+    after_info = _table_info(copy_db, tables=_untouched_tables)
+    assert after_info == before_info, "0004 不应改动 categories/media/sentences/settings/translations 的列定义"
 
-    # 新表必须出现，且列集合与模型一致（P3-2 的 2 张 + P4-3 的 7 张一起验）。
+    # 新表必须出现，且列集合与模型一致。
     tables = _table_names(copy_db)
     assert _ADDED_TABLES <= tables, f"新表缺失：{sorted(_ADDED_TABLES - tables)}"
     for table_name in sorted(_ADDED_TABLES):
@@ -703,10 +749,19 @@ def test_real_database_copy_upgrade_keeps_everything(tmp_path: Path) -> None:
         expected = {column.name for column in Base.metadata.tables[table_name].columns}
         assert actual == expected, f"{table_name} 列集合不符：多 {actual - expected}，缺 {expected - actual}"
 
-    # 真实库本身一行未变（只读校验：它仍然没有 alembic_version / jobs 表）。
+    # marks 全部迁到 sentence_marks，sentences.marks 清空。
+    with sqlite3.connect(str(copy_db)) as conn:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM sentences WHERE marks IS NOT NULL AND marks <> ''"
+        ).fetchone()[0]
+        migrated = conn.execute("SELECT COUNT(*) FROM sentence_marks").fetchone()[0]
+        assert remaining == 0, "sentences.marks 未清空"
+        assert migrated == before_marks, f"sentence_marks 迁移行数不符：{migrated} != {before_marks}"
+
+    # 真实库本身一行未变（只读校验：它仍然没有 alembic_version / 新表，列也原样）。
     assert "alembic_version" not in _table_names(_REAL_DB_PATH)
     assert not (_ADDED_TABLES & _table_names(_REAL_DB_PATH))
-    assert _table_info(_REAL_DB_PATH, readonly=True, tables=_LEGACY_TABLES) == before_info
+    assert _table_info(_REAL_DB_PATH, readonly=True, tables=_untouched_tables) == before_info
 
 
 # ---------------------------------------------------------------------------
@@ -770,10 +825,12 @@ def test_fresh_schema_server_defaults_match_models(tmp_path: Path) -> None:
     # 再加 jobs 的 6 个（status/progress/priority/payload/attempts/created_at）
     # 与 workers 的 5 个（host/mode/pools/started_at/heartbeat_at）= 18；
     # 再加 P4-3 的 3 个（papers.created_at / practice_sessions.started_at /
-    # writing_grade_cache.created_at）= 21。
+    # writing_grade_cache.created_at）= 21；
+    # 再加 0004 的 4 个（users.role/is_active/token_version +
+    # sentence_marks.ranges）= 25。
     # ⚠️ 这个数字是**故意**写成字面量的：它同时兜住「有人给新列随手加了
     #    server_default 却没在迁移里写」与「迁移写了但模型没声明」两侧。
-    assert checked == 21, f"declared server_default 数量异常：{checked}"
+    assert checked == 25, f"declared server_default 数量异常：{checked}"
 
     # 白名单项（基线刻意补的 DDL 默认值）必须真的存在，且值不变。
     assert _actual_server_defaults(db_path, "sentences")["marks"] == "''"
@@ -800,9 +857,11 @@ def test_fresh_schema_foreign_keys_match_models(tmp_path: Path) -> None:
     # P4-3：sections→papers、passages→sections、questions→sections、
     #       questions→passages、practice_sessions→papers、
     #       responses→practice_sessions、responses→questions = 7
-    # 合计 11。**刻意不加外键**的两处（sections.media_id / questions.ref_sentence_id）
-    # 也不在这个总数里 —— 它们必须保持「裸整数」，理由见 0003 迁移的 docstring。
-    assert total == 11, f"外键总数异常：{total}（vocab / IELTS 对外引用刻意不加外键）"
+    # 0004：attempts/notes/practice_sessions 的 user_id→users、
+    #       sentence_marks 的 user_id→users + sentence_id→sentences = 5
+    # 合计 16。**刻意不加外键**的两处（sections.media_id / questions.ref_sentence_id）
+    # 与 vocab.user_id 也不在这个总数里 —— 它们必须保持「裸整数」。
+    assert total == 16, f"外键总数异常：{total}（vocab / IELTS 对外引用刻意不加外键）"
 
     # 语义点名：删分类后素材必须回落「未分类」（SET NULL），绝不是级联删除。
     assert (
@@ -813,6 +872,11 @@ def test_fresh_schema_foreign_keys_match_models(tmp_path: Path) -> None:
     ) in _actual_foreign_keys(db_path, "media")
     for table_name in ("sentences", "attempts", "notes"):
         for local_columns, _referred_table, _referred_columns, ondelete in _actual_foreign_keys(db_path, table_name):
+            # user_id 外键（v1.16.2 新增）刻意 NO ACTION：软删除策略下用户不会
+            # 被物理删除，且 SQLite 的 ALTER 无法表达 ON DELETE（见 0004 docstring）。
+            if local_columns == ("user_id",):
+                assert ondelete == "NO ACTION", f"{table_name}.user_id 应为 NO ACTION，实际 {ondelete}"
+                continue
             assert ondelete == "CASCADE", f"{table_name}.{local_columns} 应为 ON DELETE CASCADE，实际 {ondelete}"
 
 
@@ -855,7 +919,11 @@ def test_migrated_schema_accepts_orm_inserts(tmp_path: Path) -> None:
             session.add(models.Vocab(word="hello"))
             session.add(models.Setting(key="ui.lang", value="zh"))
             session.add(models.Translation(key="sha1:abc", source_text="a", target_text="b", engine="youdao"))
-            session.add(models.User(username="alice", password_hash="deadbeef", salt="cafe"))
+            user = models.User(username="alice", password_hash="deadbeef", salt="cafe")
+            session.add(user)
+            session.flush()  # 取 id（sentence_marks 需要外键）
+            # v1.16.2 多用户新增：sentence_marks 也要能裸插（ranges 交给库填 DEFAULT）。
+            session.add(models.SentenceMark(user_id=user.id, sentence_id=sentence.id))
             # P3-2 新增的两张表：同样只给业务列，逼库自己填 Default。
             session.add(models.Job(kind="media_transcode", ref_id=media.id))
             session.add(models.Worker(id="w" * 32, pid=4321))

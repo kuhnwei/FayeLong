@@ -124,7 +124,7 @@ class TestSummary:
 # ---------------------------------------------------------------------------
 # DB 层（临时库）
 # ---------------------------------------------------------------------------
-def _seed_media_with_attempts(db) -> tuple[Media, Sentence, Sentence]:
+def _seed_media_with_attempts(db, user_id: int) -> tuple[Media, Sentence, Sentence]:
     media = Media(title="demo", file_path="/tmp/demo.mp3", type="audio")
     db.add(media)
     db.commit()
@@ -136,10 +136,10 @@ def _seed_media_with_attempts(db) -> tuple[Media, Sentence, Sentence]:
 
     db.add_all(
         [
-            Attempt(sentence_id=s1.id, input="a", accuracy=50.0, is_correct=False),
-            Attempt(sentence_id=s1.id, input="b", accuracy=100.0, is_correct=True),
-            Attempt(sentence_id=s1.id, input="c", accuracy=80.0, is_correct=False),
-            Attempt(sentence_id=s2.id, input="d", accuracy=20.0, is_correct=False),
+            Attempt(sentence_id=s1.id, user_id=user_id, input="a", accuracy=50.0, is_correct=False),
+            Attempt(sentence_id=s1.id, user_id=user_id, input="b", accuracy=100.0, is_correct=True),
+            Attempt(sentence_id=s1.id, user_id=user_id, input="c", accuracy=80.0, is_correct=False),
+            Attempt(sentence_id=s2.id, user_id=user_id, input="d", accuracy=20.0, is_correct=False),
         ]
     )
     db.commit()
@@ -147,16 +147,16 @@ def _seed_media_with_attempts(db) -> tuple[Media, Sentence, Sentence]:
 
 
 class TestDbLayer:
-    def test_sentence_stats(self, db_session):
-        _media, s1, _s2 = _seed_media_with_attempts(db_session)
-        stat = study.sentence_stats(db_session, s1.id)
+    def test_sentence_stats(self, db_session, authed_uid):
+        _media, s1, _s2 = _seed_media_with_attempts(db_session, authed_uid)
+        stat = study.sentence_stats(db_session, s1.id, authed_uid)
         assert stat.attempt_count == 3
         assert stat.best_accuracy == 100.0
         assert stat.last_accuracy == 80.0
         assert stat.last_input == "c"
         assert stat.mastered is True
 
-    def test_sentence_stats_no_rows(self, db_session):
+    def test_sentence_stats_no_rows(self, db_session, authed_uid):
         media = Media(title="empty", file_path="/tmp/e.mp3")
         db_session.add(media)
         db_session.commit()
@@ -164,23 +164,23 @@ class TestDbLayer:
         db_session.add(s)
         db_session.commit()
 
-        stat = study.sentence_stats(db_session, s.id)
+        stat = study.sentence_stats(db_session, s.id, authed_uid)
         assert stat.attempt_count == 0
         assert stat.last_accuracy is None
 
-    def test_media_stats_groups_by_sentence(self, db_session):
-        media, s1, s2 = _seed_media_with_attempts(db_session)
-        stats = study.media_stats(db_session, media.id)
+    def test_media_stats_groups_by_sentence(self, db_session, authed_uid):
+        media, s1, s2 = _seed_media_with_attempts(db_session, authed_uid)
+        stats = study.media_stats(db_session, media.id, authed_uid)
         assert set(stats.keys()) == {s1.id, s2.id}
         assert stats[s1.id].attempt_count == 3
         assert stats[s2.id].attempt_count == 1
         assert stats[s2.id].mastered is False
 
-    def test_media_stats_excludes_untouched_sentences(self, db_session):
-        media, s1, _s2 = _seed_media_with_attempts(db_session)
+    def test_media_stats_excludes_untouched_sentences(self, db_session, authed_uid):
+        media, s1, _s2 = _seed_media_with_attempts(db_session, authed_uid)
         s3 = Sentence(media_id=media.id, idx=2, text_en="never attempted")
         db_session.add(s3)
         db_session.commit()
 
-        stats = study.media_stats(db_session, media.id)
+        stats = study.media_stats(db_session, media.id, authed_uid)
         assert s3.id not in stats

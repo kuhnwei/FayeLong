@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from app.db import SessionLocal
-from app.models import User
+from app.models import Attempt, Note, PracticeSession, Response, SentenceMark, User, Vocab
 from app.services import auth as auth_service
 
 #: 满足最短长度（8）的测试口令。
@@ -23,11 +23,17 @@ NEW_PASSWORD = "newpassword1"
 
 @pytest.fixture(autouse=True)
 def _reset_auth_state(app_client):
-    """每个用例前：清 cookie + 清账号表 + 清登录节流，保证互相独立。"""
+    """每个用例前：清 cookie + 清账号表 + 清登录节流，保证互相独立。
+
+    先清带 `user_id` 外键的子表（多用户后 attempts/notes/vocab/sentence_marks/
+    practice_sessions 引用 users），再清 users —— 否则 `DELETE FROM users` 会因
+    NO ACTION 外键被拒（其它测试模块留下的学习数据仍引用着用户）。
+    """
     app_client.cookies.clear()
     db = SessionLocal()
     try:
-        db.query(User).delete()
+        for model in (Attempt, Note, Vocab, SentenceMark, Response, PracticeSession, User):
+            db.query(model).delete()
         db.commit()
     finally:
         db.close()
@@ -83,6 +89,9 @@ class TestSetup:
             "authenticated": True,
             "username": "faye",
             "min_password_length": 8,
+            "id": 1,
+            "role": "admin",      # 首次 setup 建的是管理员
+            "is_active": True,
         }
         assert auth_service.COOKIE_NAME in client.cookies
         # 建号后即可访问受保护接口
@@ -189,3 +198,73 @@ class TestChangePassword:
 
         client.cookies.clear()
         assert _login(client, password=PASSWORD).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# 多用户（v1.16.2）
+# ---------------------------------------------------------------------------
+def _create_user(username: str, password: str, *, role: str = "user", is_active: bool = True) -> int:
+    """直接落库建一个用户（管理员 API 在 G3 才实现，这里绕过 API 造数据）。"""
+    db = SessionLocal()
+    try:
+        salt = auth_service.new_salt()
+        user = User(
+            username=username,
+            salt=salt,
+            iterations=200_000,
+            password_hash=auth_service.hash_password(password, salt, 200_000),
+            role=role,
+            is_active=is_active,
+            token_version=0,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user.id
+    finally:
+        db.close()
+
+
+class TestMultiUser:
+    def test_two_users_login_independently(self, client):
+        _setup(client, username="admin1")  # 建 admin
+        _create_user("alice", PASSWORD)     # 建普通用户
+        client.cookies.clear()
+
+        resp = _login(client, username="admin1")
+        assert resp.status_code == 200
+        assert resp.json()["role"] == "admin"
+        assert resp.json()["id"] == 1
+
+        client.cookies.clear()
+        resp = _login(client, username="alice")
+        assert resp.status_code == 200
+        assert resp.json()["role"] == "user"
+        assert resp.json()["id"] == 2
+
+    def test_disabled_account_cannot_login(self, client):
+        _setup(client, username="admin1")
+        _create_user("alice", PASSWORD, is_active=False)
+        client.cookies.clear()
+
+        resp = _login(client, username="alice")
+        assert resp.status_code == 403
+
+    def test_disabled_account_old_cookie_invalidated(self, client):
+        _setup(client, username="admin1")
+        uid = _create_user("alice", PASSWORD)
+        client.cookies.clear()
+        assert _login(client, username="alice").status_code == 200
+
+        # 管理员停用 alice（is_active=False + bump token_version）。
+        db = SessionLocal()
+        try:
+            user = db.get(User, uid)
+            user.is_active = False
+            auth_service.bump_token_version(db, user)
+            db.commit()
+        finally:
+            db.close()
+
+        # alice 的旧 cookie 立即失效（守卫回查 is_active + token_version）。
+        assert client.get("/api/media").status_code == 401
