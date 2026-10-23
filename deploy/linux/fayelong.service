@@ -1,5 +1,5 @@
 [Unit]
-Description=FayeLong 英语学习网站（FastAPI / uvicorn）
+Description=FayeLong 精听（FastAPI / uvicorn）
 Documentation=file:/opt/fayelong/deploy/README.md
 After=network-online.target
 Wants=network-online.target

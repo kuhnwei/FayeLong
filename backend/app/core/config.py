@@ -86,7 +86,7 @@ PROGRESS_CLIP = (90, 100)
 class Settings(BaseSettings):
     """应用配置，可通过环境变量（前缀 FAYELONG_）或 backend/.env 覆盖。"""
 
-    app_name: str = "FayeLong 英语学习网站"
+    app_name: str = "FayeLong 精听"
     host: str = "127.0.0.1"
     port: int = 8000
 

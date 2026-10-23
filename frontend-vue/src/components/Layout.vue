@@ -133,7 +133,9 @@ function tabClass(active: boolean): string {
           class="h-6 w-6 shrink-0 select-none sm:h-7 sm:w-7"
         />
         <h1 class="shrink-0 text-[14px] font-extrabold tracking-[0.2px] sm:text-[15px]">
-          <span class="hidden sm:inline">FayeLong 英语学习</span>
+          <span class="hidden sm:inline">FayeLong 精听</span>
+          <!-- 窄屏（<sm）只留 FayeLong：实测评测 360/375/390px 下带「精听」会让顶栏导航
+               溢出（h1 68.3→101.1px，nav 需 166px 但只分到 126.9/141.9/156.9px） -->
           <span class="sm:hidden">FayeLong</span>
         </h1>
 

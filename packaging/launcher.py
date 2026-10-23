@@ -197,7 +197,7 @@ def banner() -> None:
     except Exception:  # noqa: BLE001  取不到版本不该影响启动
         version = ""
     say("=" * BANNER_WIDTH)
-    say(f"  FayeLong 英语学习网站   {version}")
+    say(f"  FayeLong 精听   {version}")
     say("=" * BANNER_WIDTH)
     say("")
 
